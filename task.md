@@ -193,7 +193,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 - [x] **2.2** `disk::MemDisk`: a plain in-memory implementation.
 - [x] **2.3** `disk::CrashDisk`: models a volatile write cache.
   - Writes stay pending until `flush`.
-  - At a chosen crash point, pending writes may be dropped, applied, reordered, or torn at 512 B.
+  - At a chosen crash point, pending writes may be dropped, applied, reordered, or torn at 512 B, and the sector in flight may be left as garbage. Without garbling, records under 512 B looked safe even in a single slot.
   - Records every write and flush, so a test can enumerate all crash points.
   - Done when: its own tests reproduce lost, reordered and torn writes deterministically from a seed.
 - [ ] **2.4** Test fixtures (`cargo xtask fixture`).
@@ -227,10 +227,20 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 4 — Journal
 
-- [ ] **4.1** `core::journal` codec: `Slot { magic, version, seq, step, op_index, next_chunk, hash_chain, plan_digest, crc32c }` plus the full plan blob. Explicit little-endian layout; no serde for the on-disk format.
-- [ ] **4.2** `disk::journal_store`: A/B slots at fixed offsets inside the preallocated extent list. `commit()` writes the older slot, then flushes. `load()` returns the newest slot with a valid CRC.
-- [ ] **4.3** Tests: round-trip, every single-bit flip detected, a torn slot write falls back to the other slot (CrashDisk), sequence wrap-around.
-- [ ] **4.4** `cargo fuzz` targets for slot and plan decoding.
+- [x] **4.1** `core::journal` codec, with an explicit little-endian layout and no serde.
+  - File layout: slot A at 0, slot B at 1 MiB, plan record at 2 MiB, 4 MiB in total.
+  - `Slot { seq, run_id, stage, steps_done, operation, next_chunk, hash_chain }` + CRC32C, padded to 4 KiB.
+  - `PlanRecord { run_id, payload }` + CRC32C. The payload's encoding is decided with the executor (Phase 8).
+  - A random `run_id` per run ties slots to their plan, replacing a plan digest.
+- [x] **4.2** `disk::journal_store`.
+  - `JournalFile` maps file offsets onto device extents (from FIEMAP), including fragmented files.
+  - `Journal::open` returns the plan and the newest valid slot for this run.
+  - `Journal::commit` checks the plan record still carries this run's ID (so stale extents are never written), writes slot `seq % 2`, then flushes.
+- [x] **4.3** Tests: round-trip, every single-bit flip detected, a decode test for the version-1 layout, a newer version refused, oversized plans refused, slots from another run ignored.
+  - CrashDisk: every crash point × lost / landed / 64 scrambled outcomes leaves the old or the new progress; commits continue after a torn slot.
+  - Mutation-checked: a single-slot journal fails the crash test.
+  - Sequence wrap-around dropped: `seq` is a `u64`.
+- [~] **4.4** (proptest stand-in done: `crates/core/tests/journal_properties.rs` decodes random and damaged bytes without panicking) `cargo fuzz` targets for slot and plan decoding. Needs nightly + cargo-fuzz.
   - Done when: a 30 min run finds no crashes.
 
 ### Phase 5 — Copier (the heart)
