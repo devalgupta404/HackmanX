@@ -7,7 +7,7 @@
 
 mod guest;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
@@ -87,19 +87,32 @@ const FORWARDED_BUS: &str = "/tmp/bootshift-vm-bus";
 /// and prints the command that launches the desktop GUI against the guest's real disk.
 fn demo_gui(paths: &Paths, fresh: bool) -> Result<()> {
     let disk = paths.out.join("demo-gui.qcow2");
-    if fresh || !disk.exists() {
+    let reused = !fresh && disk.exists();
+    if !reused {
         prepare_vm(paths, false)?;
-        let _ = std::fs::remove_file(&disk);
-        run(Command::new("qemu-img")
-            .args(["create", "-f", "qcow2", "-F", "qcow2", "-b"])
-            .arg(paths.prepared())
-            .arg(&disk))?;
+        reset_demo_gui_disk(paths, &disk)?;
     }
     // Show the VM window when this box has a desktop; headless when run over SSH.
     let has_display =
         std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some();
     let mut guest = Guest::launch(paths, &disk, has_display)?;
-    guest.wait_ssh()?;
+    if let Err(first_try) = guest.wait_ssh() {
+        if !reused {
+            return Err(first_try);
+        }
+        // A reused overlay that never answers almost always means a dirty shutdown corrupted its
+        // ext4 root. The cloud image's initramfs has no fsck, so it can't self-repair and drops
+        // to emergency mode before the network is up. The overlay is disposable, so rebuild it
+        // from the pristine prepared image and boot once more.
+        eprintln!(
+            "the reused demo disk never came up; a dirty shutdown likely corrupted its root \
+             filesystem. Rebuilding it fresh from the prepared image…"
+        );
+        guest.kill();
+        reset_demo_gui_disk(paths, &disk)?;
+        guest = Guest::launch(paths, &disk, has_display)?;
+        guest.wait_ssh()?;
+    }
 
     println!("installing bootshiftd in the guest…");
     build_musl_bootshift(paths)?;
@@ -182,6 +195,18 @@ fn demo_gui(paths: &Paths, fresh: bool) -> Result<()> {
     println!("After it boots back, reopen the GUI to see the new layout.");
     println!("Stop everything:  pkill -f demo-gui.qcow2; pkill -f {FORWARDED_BUS}\n");
     println!("==============================================================\n");
+    Ok(())
+}
+
+/// Recreates the demo-gui overlay on top of the pristine prepared image, discarding any disk and
+/// firmware vars from a previous run so the boot starts clean.
+fn reset_demo_gui_disk(paths: &Paths, disk: &Path) -> Result<()> {
+    let _ = std::fs::remove_file(disk);
+    let _ = std::fs::remove_file(disk.with_extension("vars.fd"));
+    run(Command::new("qemu-img")
+        .args(["create", "-f", "qcow2", "-F", "qcow2", "-b"])
+        .arg(paths.prepared())
+        .arg(disk))?;
     Ok(())
 }
 

@@ -181,6 +181,19 @@ impl Guest {
             if self.try_ssh("true").is_ok() {
                 return Ok(());
             }
+            // A corrupt root drops the guest to emergency mode before the network comes up, so
+            // SSH would never answer. Catch that on the serial console and fail fast, rather than
+            // polling for the full timeout, so the caller can rebuild the disk.
+            let serial = self.serial_from(0);
+            if serial.contains("Reached target Emergency Mode")
+                || serial.contains("You are in emergency mode")
+            {
+                bail!(
+                    "the guest dropped to emergency mode, so its root filesystem is corrupt; \
+                     serial log tail:\n{}",
+                    self.serial_tail()
+                );
+            }
             std::thread::sleep(Duration::from_secs(2));
         }
         bail!(
