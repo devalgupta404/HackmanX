@@ -1,7 +1,7 @@
 //! The recovery system: `bootshift` running as PID 1 from the initramfs, and the same work
 //! started by hand from a live USB.
 
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread::sleep;
@@ -101,32 +101,85 @@ pub fn resume(disk: &Path, kernel_args: &str, accept_unreadable: bool) -> anyhow
     Ok(())
 }
 
-/// Prints each operation and a line every few percent, slowly enough for a serial console.
+/// The recovery screen, drawn on `/dev/console` to match the app's design: a dark screen, a
+/// green block progress bar that updates in place, and the safety message. Colours are the
+/// 16-colour ANSI set, which every Linux console renders.
 #[derive(Default)]
 struct ConsoleProgress {
-    last_twentieth: Option<u64>,
+    out: Vec<std::fs::File>,
+    opened: bool,
+    banner_drawn: bool,
+    last_percent: Option<u64>,
+}
+
+const BAR_CELLS: u64 = 30;
+
+/// The screen (`/dev/tty0`, the VGA console in the VM window) and the system console
+/// (`/dev/console`, which is the serial port when the kernel has `console=ttyS0`). Writing to
+/// both puts the recovery screen where a person is watching and where the test harness reads.
+const CONSOLES: [&str; 2] = ["/dev/tty0", "/dev/console"];
+
+impl ConsoleProgress {
+    fn write(&mut self, text: &str) {
+        if !self.opened {
+            self.opened = true;
+            self.out = CONSOLES
+                .iter()
+                .filter_map(|path| std::fs::OpenOptions::new().write(true).open(path).ok())
+                .collect();
+        }
+        if self.out.is_empty() {
+            eprint!("{text}");
+            let _ = std::io::stderr().flush();
+            return;
+        }
+        for file in &mut self.out {
+            let _ = file.write_all(text.as_bytes());
+        }
+    }
+
+    fn banner(&mut self) {
+        if self.banner_drawn {
+            return;
+        }
+        self.banner_drawn = true;
+        self.write(concat!(
+            "\x1b[40m\x1b[2J\x1b[H",
+            "\n  \x1b[1;97mBootShift\x1b[0m\n",
+            "  \x1b[90mRearranging your disk, before any operating system starts.\x1b[0m\n\n",
+            "  \x1b[92mIf the power goes out, just turn the computer back on.\x1b[0m\n",
+            "  \x1b[92mIt resumes from the last verified chunk. No drama.\x1b[0m\n",
+        ));
+    }
 }
 
 impl ProgressSink for ConsoleProgress {
     fn operation(&mut self, index: u32, count: u32, what: &str) {
-        self.last_twentieth = None;
-        say(&format!("[{index}/{count}] {what}"));
+        self.banner();
+        self.last_percent = None;
+        self.write(&format!("\n  \x1b[37m[{index}/{count}] {what}\x1b[0m\n"));
     }
 
     fn copied(&mut self, done: u64, total: u64) {
         if total == 0 {
             return;
         }
-        let twentieth = done * 20 / total;
-        if Some(twentieth) != self.last_twentieth {
-            self.last_twentieth = Some(twentieth);
-            say(&format!(
-                "  {:>3}%  {} of {} moved and verified",
-                done * 100 / total,
-                gib(done),
-                gib(total)
-            ));
+        let percent = done * 100 / total;
+        if self.last_percent == Some(percent) {
+            return;
         }
+        self.last_percent = Some(percent);
+        let filled = (percent * BAR_CELLS / 100).min(BAR_CELLS) as usize;
+        let bar = format!(
+            "\x1b[92m{}\x1b[90m{}\x1b[0m",
+            "█".repeat(filled),
+            "░".repeat(BAR_CELLS as usize - filled),
+        );
+        self.write(&format!(
+            "\r  {bar}  \x1b[1;97m{percent:>3}%\x1b[0m  \x1b[90m{} of {}\x1b[0m",
+            gib(done),
+            gib(total),
+        ));
     }
 }
 
@@ -202,19 +255,19 @@ fn find_disk(guid: Guid) -> Option<PathBuf> {
     })
 }
 
-/// In the recovery system, writing through /dev/kmsg puts the line on every console the
-/// kernel knows (the screen and the serial port) exactly once. Elsewhere, stderr.
-///
-/// /dev/kmsg makes one log record per write(2), so the whole line, priority prefix included,
-/// must go in a single write — writeln!'s several writes would split it into empty records.
+/// A discrete message on the machine's console (the intro, the final line, errors). Each lands
+/// on its own line, on both the screen and the system console. Before devtmpfs is mounted the
+/// device nodes don't exist yet, so it falls back to stderr, which is the console for PID 1.
 fn say(line: &str) {
-    use std::io::Write;
-    let record = format!("<2>bootshift: {line}\n");
-    let printk = std::fs::OpenOptions::new()
-        .write(true)
-        .open("/dev/kmsg")
-        .and_then(|mut kmsg| kmsg.write_all(record.as_bytes()));
-    if printk.is_err() {
+    let text = format!("\n  {line}");
+    let mut reached = false;
+    for path in CONSOLES {
+        if let Ok(mut console) = std::fs::OpenOptions::new().write(true).open(path) {
+            let _ = console.write_all(text.as_bytes());
+            reached = true;
+        }
+    }
+    if !reached {
         eprintln!("{line}");
     }
 }

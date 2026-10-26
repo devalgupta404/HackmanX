@@ -424,9 +424,6 @@ fn restart(ui: &mut Ui, app: &App, narrow: bool) {
         width,
         1.5,
     );
-    ui.add_space(17.0);
-    bar_caption(ui, "On the machine's screen you'll see", "the recovery console");
-    console::preview(ui);
 }
 
 /* ---------- done ---------- */

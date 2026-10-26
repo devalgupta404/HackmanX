@@ -309,7 +309,7 @@ impl Guest {
         let started = Instant::now();
         while started.elapsed() < Duration::from_secs(timeout_secs) {
             let text = self.serial_from(offset);
-            for percent in text.lines().filter_map(percent_of_line) {
+            for percent in percents(&text) {
                 if percent >= min && percent <= max {
                     return Ok(percent);
                 }
@@ -357,15 +357,27 @@ impl Drop for Guest {
     }
 }
 
-/// "  38%  1.1 GiB of 2.9 GiB moved and verified" → 38.
-fn percent_of_line(line: &str) -> Option<u32> {
-    let end = line.find('%')?;
-    let digits: String = line[..end]
-        .chars()
-        .rev()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    digits.chars().rev().collect::<String>().parse().ok()
+/// Every `<digits>%` in the text, in order. The recovery console updates its bar in place with
+/// `\r` and ANSI escapes, so there are no clean lines to split on; this just reads each percent
+/// value wherever a run of digits is followed by `%`.
+fn percents(text: &str) -> Vec<u32> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = Vec::new();
+    for (i, &c) in chars.iter().enumerate() {
+        if c != '%' {
+            continue;
+        }
+        let mut start = i;
+        while start > 0 && chars[start - 1].is_ascii_digit() {
+            start -= 1;
+        }
+        if start < i {
+            if let Ok(value) = chars[start..i].iter().collect::<String>().parse() {
+                out.push(value);
+            }
+        }
+    }
+    out
 }
 
 fn free_port() -> Result<u16> {

@@ -114,35 +114,6 @@ pub fn show(ui: &mut Ui, run: &RecoveryRun) {
     draw(ui, lines(run));
 }
 
-/// A static picture of the recovery console as the machine shows it, for the real-disk restart
-/// screen: the app can't drive the real recovery (it runs before any desktop), so it shows what
-/// to expect instead of a fiction. The lines match what `bootshift` prints during recovery.
-pub fn preview(ui: &mut Ui) {
-    draw(
-        ui,
-        vec![
-            Line::Text(Tone::Bright, "BootShift recovery: rearranging your disk.".to_string()),
-            Line::Text(
-                Tone::Dim,
-                "moving your partitions, before any operating system starts".to_string(),
-            ),
-            Line::Rule,
-            Line::Progress { filled: 21, percent: 58 },
-            Line::Text(Tone::Body, "moving Linux (ext4), chunk 581 of 1002".to_string()),
-            Line::Text(Tone::Dim, "copied, flushed, verified, journaled".to_string()),
-            Line::Rule,
-            Line::Text(
-                Tone::Green,
-                "If the power goes out, just turn the computer back on.".to_string(),
-            ),
-            Line::Text(
-                Tone::Green,
-                "BootShift resumes from the last verified chunk. No drama.".to_string(),
-            ),
-        ],
-    );
-}
-
 fn draw(ui: &mut Ui, lines: Vec<Line>) {
     let width = ui.available_width().min(theme::layout::CONSOLE_MAX);
     ui.allocate_ui(Vec2::new(width, 0.0), |ui| {
