@@ -1,0 +1,15 @@
+{
+   "partitiontable": {
+      "label":"gpt",
+      "id":"4D61323D-A62E-47AC-942D-C1543E784FF1",
+      "device":"/dev/sda",
+      "unit":"sectors",
+      "firstlba":34,
+      "lastlba":1953525134,
+      "partitions": [
+         {"node":"/dev/sda1", "start":2048, "size":1083392, "type":"DE94BBA4-06D1-4D40-A16A-BFD50179D6AC", "uuid":"8C066F73-D2B6-4F59-8FB4-B496E3004B88", "name":"Basic data partition", "attrs":"RequiredPartition"},
+         {"node":"/dev/sda2", "start":1085440, "size":204800, "type":"C12A7328-F81F-11D2-BA4B-00A0C93EC93B", "uuid":"72BE6342-9DFA-4EDF-8921-22F4BA67047A", "name":"EFI system partition"},
+         {"node":"/dev/sda7", "start":824147968, "size":404654080, "type":"0FC63DAF-8483-4772-8E79-3D69D8477DE4", "uuid":"A47E9570-AD3B-4B73-A754-20BE6C493085"}
+      ]
+   }
+}

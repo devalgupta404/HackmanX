@@ -4,12 +4,18 @@
 #![allow(clippy::unwrap_used)]
 
 use bootshift_fs::probe;
-use bootshift_fs::run::SystemRunner;
+use bootshift_fs::run::{RunError, SystemRunner};
 use bootshift_fs::swap;
 
 #[test]
 fn lsblk_output_of_this_machine_parses() {
-    assert!(probe::disks(&SystemRunner).is_ok());
+    match probe::disks(&SystemRunner) {
+        Ok(_) => {}
+        // On lsblk older than 2.37 the fallback reads start sectors with sfdisk, which needs
+        // root. An unprivileged run may only fail that way; a parse failure is still a bug.
+        Err(RunError::Failed { command, .. }) if command.starts_with("sfdisk") => {}
+        Err(error) => panic!("probing this machine failed: {error}"),
+    }
 }
 
 #[test]
