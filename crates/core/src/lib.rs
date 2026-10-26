@@ -6,6 +6,7 @@ pub mod layout;
 pub mod plan;
 pub mod planner;
 pub mod refusal;
+pub mod scope;
 pub mod units;
 pub mod validate;
 

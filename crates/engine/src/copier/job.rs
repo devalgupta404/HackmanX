@@ -1,31 +1,9 @@
 use std::ops::Range;
 
+pub use bootshift_core::scope::CopyScope;
+use bootshift_core::scope::merge;
+
 pub const MAX_CHUNK: u64 = 64 << 20;
-
-/// The start and end of a partition hold boot sectors and backup superblocks that some
-/// free-space maps don't mark as used (NTFS keeps its backup boot sector in the last sector).
-const ALWAYS_COPIED: u64 = 1 << 20;
-
-/// Which bytes of the partition hold data, relative to its start.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CopyScope {
-    Everything,
-    /// Sorted, non-overlapping ranges.
-    UsedOnly(Vec<Range<u64>>),
-}
-
-impl CopyScope {
-    /// Builds the scope from a filesystem's used ranges, always adding the first and last MiB.
-    pub fn used_only(partition_len: u64, used: impl IntoIterator<Item = Range<u64>>) -> CopyScope {
-        let mut ranges: Vec<Range<u64>> = used
-            .into_iter()
-            .map(|r| r.start.min(partition_len)..r.end.min(partition_len))
-            .collect();
-        ranges.push(0..ALWAYS_COPIED.min(partition_len));
-        ranges.push(partition_len.saturating_sub(ALWAYS_COPIED)..partition_len);
-        CopyScope::UsedOnly(merge(ranges))
-    }
-}
 
 /// Move `len` bytes from device offset `source` to `destination`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -124,19 +102,6 @@ impl ChunkPlan {
     }
 }
 
-fn merge(mut ranges: Vec<Range<u64>>) -> Vec<Range<u64>> {
-    ranges.retain(|r| r.start < r.end);
-    ranges.sort_by_key(|r| r.start);
-    let mut merged: Vec<Range<u64>> = Vec::with_capacity(ranges.len());
-    for range in ranges {
-        match merged.last_mut() {
-            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
-            _ => merged.push(range),
-        }
-    }
-    merged
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,15 +156,6 @@ mod tests {
         assert!(ChunkPlan::new(job(MIB, MIB, MIB), 512, MAX_CHUNK).is_err());
         assert!(ChunkPlan::new(job(MIB, 0, 0), 512, MAX_CHUNK).is_err());
         assert!(ChunkPlan::new(job(MIB + 1, 0, MIB), 512, MAX_CHUNK).is_err());
-    }
-
-    #[test]
-    fn used_scope_always_covers_the_first_and_last_mib() {
-        let scope = CopyScope::used_only(10 * MIB, std::iter::once(5 * MIB..5 * MIB + 10));
-        assert_eq!(
-            scope,
-            CopyScope::UsedOnly(vec![0..MIB, 5 * MIB..5 * MIB + 10, 9 * MIB..10 * MIB])
-        );
     }
 
     #[test]

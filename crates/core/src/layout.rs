@@ -2,10 +2,15 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
+
 use crate::units::{Lba, Sectors};
 
 /// A GPT GUID in its on-disk byte order (the first three fields are little-endian).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, SerializeDisplay, DeserializeFromStr,
+)]
 pub struct Guid(pub [u8; 16]);
 
 impl fmt::Display for Guid {
@@ -58,7 +63,7 @@ impl FromStr for Guid {
 }
 
 /// A contiguous run of sectors from `start` up to, but not including, `end()`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Extent {
     pub start: Lba,
     pub len: Sectors,
@@ -82,7 +87,7 @@ impl Extent {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Geometry {
     pub sector_size: u32,
     /// The sectors partitions may occupy, between the primary and backup GPT.
@@ -92,7 +97,7 @@ pub struct Geometry {
 }
 
 /// What a partition holds, which decides what BootShift may do with it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Content {
     EfiSystem,
     Ext4,
@@ -146,7 +151,7 @@ impl Content {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Partition {
     /// The GPT entry number, as shown to the user (1-based).
     pub number: u32,
@@ -179,7 +184,7 @@ impl Partition {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Layout {
     pub geometry: Geometry,
     pub partitions: Vec<Partition>,

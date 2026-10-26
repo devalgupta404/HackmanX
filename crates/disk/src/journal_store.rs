@@ -1,8 +1,10 @@
 use std::ops::Range;
 
 use bootshift_core::journal::{
-    self, DecodeError, PLAN_OFFSET, PlanRecord, Progress, SLOT_OFFSETS, SLOT_SIZE, Slot,
+    self, DecodeError, PLAN_OFFSET, PlanRecord, Progress, SCOPE_OFFSET, SLOT_OFFSETS, SLOT_SIZE,
+    ScopeRecord, Slot,
 };
+use bootshift_core::scope::CopyScope;
 
 use crate::device::{BlockDevice, DiskError};
 
@@ -31,6 +33,8 @@ pub enum JournalError {
     DamagedPlan(#[from] DecodeError),
     #[error("the journal file no longer holds this run's plan, so nothing was written")]
     NotOurs,
+    #[error("the journal has no recorded scope for operation {0}")]
+    NoScope(u32),
 }
 
 impl JournalFile {
@@ -184,11 +188,7 @@ impl Journal {
         device: &mut D,
         progress: &Progress,
     ) -> Result<(), JournalError> {
-        let (run_id, _) = self.file.read_plan_header(device)?;
-        if run_id != self.run_id {
-            return Err(JournalError::NotOurs);
-        }
-
+        self.check_still_ours(device)?;
         let slot = Slot {
             seq: self.next_seq,
             run_id: self.run_id,
@@ -199,6 +199,54 @@ impl Journal {
         device.flush()?;
         self.next_seq += 1;
         Ok(())
+    }
+
+    /// Records the used ranges of `operation` and flushes. Done before the move's first chunk
+    /// is copied, because afterwards the source can no longer be measured.
+    pub fn record_scope<D: BlockDevice + ?Sized>(
+        &mut self,
+        device: &mut D,
+        operation: u32,
+        scope: &CopyScope,
+    ) -> Result<(), JournalError> {
+        self.check_still_ours(device)?;
+        let mut record = ScopeRecord {
+            run_id: self.run_id,
+            operation,
+            scope: scope.clone(),
+        }
+        .encode();
+        record.resize(record.len().next_multiple_of(SLOT_SIZE), 0);
+        self.file.write_at(device, SCOPE_OFFSET, &record)?;
+        device.flush()?;
+        Ok(())
+    }
+
+    /// The used ranges recorded for `operation` of this run.
+    pub fn recorded_scope<D: BlockDevice + ?Sized>(
+        &self,
+        device: &D,
+        operation: u32,
+    ) -> Result<CopyScope, JournalError> {
+        let mut region = vec![0; (journal::FILE_LEN - SCOPE_OFFSET) as usize];
+        self.file.read_at(device, SCOPE_OFFSET, &mut region)?;
+        match ScopeRecord::decode(&region) {
+            Ok(record) if record.run_id == self.run_id && record.operation == operation => {
+                Ok(record.scope)
+            }
+            _ => Err(JournalError::NoScope(operation)),
+        }
+    }
+
+    /// Fails unless the journal file still holds this run's plan, so a journal file that was
+    /// moved or replaced is never written through stale extents.
+    fn check_still_ours<D: BlockDevice + ?Sized>(&self, device: &D) -> Result<(), JournalError> {
+        let (run_id, _) = self.file.read_plan_header(device)?;
+        if run_id == self.run_id {
+            Ok(())
+        } else {
+            Err(JournalError::NotOurs)
+        }
     }
 }
 
@@ -366,6 +414,27 @@ mod tests {
             journal.commit(&mut disk, &progress(1)),
             Err(JournalError::NotOurs)
         ));
+    }
+
+    #[test]
+    fn recorded_scope_reads_back_for_its_operation_only() {
+        let mut disk = disk_with_fresh_journal();
+        let mut journal = open(&disk).journal;
+        let scope = CopyScope::UsedOnly(vec![0..4096, 8192..16384]);
+
+        journal.record_scope(&mut disk, 3, &scope).unwrap();
+
+        assert_eq!(journal.recorded_scope(&disk, 3).unwrap(), scope);
+        assert!(matches!(
+            journal.recorded_scope(&disk, 4),
+            Err(JournalError::NoScope(4))
+        ));
+    }
+
+    #[test]
+    fn a_fresh_journal_has_no_scope() {
+        let disk = disk_with_fresh_journal();
+        assert!(open(&disk).journal.recorded_scope(&disk, 0).is_err());
     }
 
     #[test]
