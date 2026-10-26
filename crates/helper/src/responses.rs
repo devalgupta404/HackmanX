@@ -6,6 +6,7 @@ use bootshift_core::plan::Operation;
 use bootshift_core::refusal::Refusal;
 use bootshift_engine::preflight;
 use bootshift_engine::service::{self, Inspected, ServiceError};
+use bootshift_fs::probe::DiskInfo;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -13,6 +14,15 @@ use serde::Serialize;
 pub enum Reply<T> {
     Ok { value: T },
     Refused { refusals: Vec<Refusal> },
+}
+
+#[derive(Serialize)]
+pub struct DiskSummary {
+    pub path: String,
+    pub size: u64,
+    pub transport: Option<String>,
+    pub removable: bool,
+    pub partition_table: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -35,6 +45,19 @@ pub struct Planned {
 #[derive(Serialize)]
 pub struct Applied {
     pub restart_to_begin: bool,
+}
+
+pub fn disk_summaries(disks: &[DiskInfo]) -> Vec<DiskSummary> {
+    disks
+        .iter()
+        .map(|disk| DiskSummary {
+            path: disk.path.display().to_string(),
+            size: disk.size,
+            transport: disk.transport.clone(),
+            removable: disk.removable,
+            partition_table: disk.partition_table.clone(),
+        })
+        .collect()
 }
 
 pub fn probed(inspected: &Inspected) -> Probed {
