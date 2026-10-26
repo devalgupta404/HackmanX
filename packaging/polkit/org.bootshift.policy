@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- Installed to /usr/share/polkit-1/actions/. -->
+<policyconfig>
+  <vendor>BootShift</vendor>
+
+  <action id="org.bootshift.inspect">
+    <description>Read the disk layout and run BootShift's safety checks</description>
+    <message>Authentication is required to read the disk layout</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <!-- Never auth_admin_keep: each change must be confirmed on its own. -->
+  <action id="org.bootshift.apply">
+    <description>Rearrange the partitions on a disk</description>
+    <message>Authentication is required to rearrange the partitions on this disk</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

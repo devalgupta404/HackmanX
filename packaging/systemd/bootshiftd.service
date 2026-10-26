@@ -1,0 +1,8 @@
+# Installed to /usr/lib/systemd/system/. Started by D-Bus activation, not at boot.
+[Unit]
+Description=BootShift partition helper
+
+[Service]
+Type=dbus
+BusName=org.bootshift.Helper1
+ExecStart=/usr/libexec/bootshift/bootshiftd
