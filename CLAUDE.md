@@ -67,6 +67,7 @@ gui/        Tauri 2 app (Rust backend + web frontend). Never touches disks; only
 xtask/      Dev tasks: fixtures, VM tests, crash suites, initramfs builds.
 packaging/  D-Bus policy, systemd unit, polkit policy.
 task.md     Ordered work plan and research findings.
+issues.md   Known defects and gaps, each naming the task that closes it. Remove an issue in the change that fixes it.
 ```
 
 **Naming:** every crate is a package named `bootshift-<dir>` (e.g. `crates/core` → `bootshift-core`, imported as `bootshift_core`). This avoids clashing with Rust's built-in `core`.
@@ -88,14 +89,14 @@ task.md     Ordered work plan and research findings.
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace                       # fast: unit, proptest, CrashDisk
-cargo xtask vm-test                          # privileged integration tests inside QEMU
-cargo xtask crash-suite --nightly            # dm-log-writes, dm-dust, kill-QEMU loops
+cargo xtask vm-test                          # privileged integration tests inside QEMU (NOT BUILT YET, issue I-01)
+cargo xtask crash-suite --nightly            # dm-log-writes, dm-dust, kill-QEMU loops (NOT BUILT YET, issue I-01)
 cargo +nightly fuzz run journal_decode       # in crates/core
 cargo build -p bootshift-cli --release --target x86_64-unknown-linux-musl
 cargo deny check                             # licences + advisories
 ```
 
-Before saying a task is done, run fmt, clippy and `cargo test --workspace`. If the change touches `disk`, `engine` or `fs`, also run `cargo xtask vm-test`.
+Before saying a task is done, run fmt, clippy and `cargo test --workspace`. If the change touches `disk`, `engine` or `fs`, also run `cargo xtask vm-test` — until task 2.3b builds it (issue I-01), verify those changes by hand in a QEMU VM instead, never on a real disk.
 
 ## Code style
 

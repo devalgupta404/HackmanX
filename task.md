@@ -5,6 +5,8 @@ The design is in `BootShift Architecture Plan.pdf` (not in the repo yet). Sectio
 
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done.
 
+Defects and gaps found in code audits live in [`issues.md`](issues.md); each one names the task that closes it.
+
 There is one plan and one product: a ready-to-ship tool, run from Linux, that can move any partition anywhere on the disk. There is no reduced "v1" scope. Each task has a **Done when** line, and a task is not done until its tests exist and pass.
 
 ## 0. Product scope
@@ -200,6 +202,8 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - At a chosen crash point, pending writes may be dropped, applied, reordered, or torn at 512 B, and the sector in flight may be left as garbage. Without garbling, records under 512 B looked safe even in a single slot.
   - Records every write and flush, so a test can enumerate all crash points.
   - Done when: its own tests reproduce lost, reordered and torn writes deterministically from a seed.
+- [ ] **2.3b** Make `cargo xtask` real (issue I-01: today it is an empty `fn main() {}`, so none of the xtask commands CLAUDE.md names exist): `fixture`, `vm-test` and `crash-suite` subcommands.
+  - Done when: `cargo xtask vm-test` runs 2.5's sample test.
 - [ ] **2.4** Test fixtures (`cargo xtask fixture`).
   - Build disk images with a chosen GPT layout and ext4, NTFS, Btrfs, XFS and swap filesystems, filled with files of known content.
   - Write a manifest of file hashes.
@@ -264,6 +268,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - On EIO the copier stops, keeps the journal, and reports the exact block, found by rereading block by block.
   - `accept_unreadable` writes zeros and lists the lost blocks.
   - Unreadable blocks outside the used ranges are never read.
+  - Still missing (issue I-07): nothing can turn `accept_unreadable` on — no CLI flag, recovery prompt or GUI control. An EIO is a hard stop with no accept path.
 - [x] **5.5** Used-range copy: `CopyScope::used_only` merges ranges and always adds the first and last MiB. Pieces are block-aligned and clipped to their chunk, and chunks without data are skipped without a commit.
 - [ ] **5.6** Oracle test in the VM: move a real ext4 image with our copier and with `sfdisk --move-data`, then compare the bytes.
 
@@ -375,9 +380,11 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - Parses `/proc/cmdline` and waits up to 60 s for the disk whose GPT disk GUID matches.
   - `engine::recovery::run` checks the table still matches the plan before the first write (if not: restore booting, finish the journal, stop). Then it executes, restores booting and commits Done. The disk is opened `ReadWriteShared` so tools can open partitions.
   - Never touches the ESP during the move; it is mounted only when restoring booting.
+  - The error screen waits for Enter forever; if the keyboard modules failed to load, the machine hangs instead of powering off. Needs a timeout (issue I-09).
 - [~] **10.3** (text messages done; progress bar and time left pending) Recovery screen.
   - Shows what it is doing and "If the power goes out, just turn the computer back on."
   - On an error: explains, keeps the redirect, waits for Enter, then powers off. It never boots an OS over a half-moved disk.
+  - Needs a `ProgressSink` hook in `move_range`/the executor first, so recovery (and later the GUI) can show percent and time left without touching the copy loop's safety ordering (issue I-05). Today the screen is silent for the whole copy.
 - [x] **10.4** `boot::journal_file` (plus `engine::prepare`, which copies the kernel and initramfs).
   - `create` writes the journal file and fsyncs it and its directory.
   - `extents` locates it with `filefrag -v -b512` (FIEMAP), refusing extents flagged delalloc, unknown, inline, encoded or not_aligned, and turning them into whole-disk offsets.
@@ -438,6 +445,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - systemd unit (`Type=dbus`).
   - polkit policy: inspect is allowed for the active user; apply always asks for the admin password.
   - The XML is checked with `xmllint`.
+- [ ] **12.4** Clean up the helper's work directory (issue I-10): `$TMPDIR/bootshiftd` is created once with a fixed name and never cleaned, so initramfs artifacts from failed runs survive.
 
 ### Phase 13 — GUI (Tauri 2)
 
@@ -447,9 +455,11 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - Partitions smaller than 1% of the disk are drawn above their neighbours so they stay visible. The EFI system and BitLocker partitions are locked.
   - `editing.ts` holds the pure clamping rules mirroring `core::validate` (alignment, minimum size, can grow/shrink, no overlap, stay on the disk), with 12 Vitest tests.
   - Driven in a browser with Playwright against the demo backend: a keyboard shrink, a keyboard move and a mouse edge drag each clamp correctly, and the plan list updates. No console errors.
+  - Restyled 2026-10-26 to the BootShift visual design (midnight/mint, Ubuntu type) as a five-screen flow: arrange, plan, checks, restart (with a live recovery-console preview and a simulated power cut in demo mode), summary.
 - [~] **13.2** (frontend done) Plan preview with the same wording as the CLI and a copy estimate ("Copies about 90.5 GiB, during one restart"). Refusals and unavailable steps are shown with their fixes.
 - [~] **13.3** (frontend done) Backup confirmation checkbox. Apply is enabled only when the plan has steps, nothing is unavailable, the checks passed and the box is ticked. The table-backup download is still to do.
 - [ ] **13.4** Apply → restart; post-restart summary, including the `reagentc` step when the recovery partition moved and the one-time chkdsk note for NTFS.
+  - The restart and summary screens exist in the frontend (demo simulation); what's missing is the real wiring: reading the finished journal for the summary, and the reagentc/chkdsk notes driven by the actual plan (issue I-14).
 - [ ] **13.5** Tauri 2 shell (`gui/src-tauri`): commands `list_disks`, `probe`, `plan`, `check` and `apply` forward to `org.bootshift.Helper1` over the system D-Bus (a zbus proxy). Needs `libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev` to build.
 
 ### Phase 14 — Docs and packaging
