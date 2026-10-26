@@ -1,0 +1,15 @@
+[package]
+name = "bootshift-migrate-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+bootshift-disk.workspace = true
+bootshift-migrate-core = { path = "../core" }

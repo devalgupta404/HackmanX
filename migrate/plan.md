@@ -220,7 +220,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 
 ### Phase 2 — Test infrastructure first
 
-- [ ] **2.1 `LiveDisk`.** A `MemDisk` that a seeded writer thread mutates concurrently while recording a ground-truth write log.
+- [x] **2.1 `LiveDisk`.** A `MemDisk` that a seeded writer thread mutates concurrently while recording a ground-truth write log.
   **Done when** a seed reproduces the exact same history.
 - [x] **2.2 `SimTracker`.** A tracker fed from `LiveDisk`'s log, with injectable faults: drop, delay, detach.
 - [x] **2.3 `FaultyLink`.** An in-memory transport that can drop, delay, duplicate or cut frames, and reconnect.
@@ -230,14 +230,14 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 
 ### Phase 3 — Pure logic (`migrate-core`)
 
-- [ ] **3.1 Wire messages and codec.** proptest round-trip plus a fuzz target.
-- [ ] **3.2 Receipt format.** Canonical JSON, a blake3 Merkle root over chunk hashes, ed25519 signature. Includes a decode test and a fuzz target.
+- [x] **3.1 Wire messages and codec.** proptest round-trip plus a fuzz target.
+- [x] **3.2 Receipt format.** Canonical JSON, a blake3 Merkle root over chunk hashes, ed25519 signature. Includes a decode test and a fuzz target.
 - [x] **3.3 Dirty map model.** Range set at 4 KiB granularity, merged into extents of at most 4 MiB.
 - [x] **3.4 Convergence model.** Predict the final delta and downtime from the history of each pass, and decide among continue, throttle, mirror, ready, and can't-converge.
   **Done when** proptest shows it never says *ready* while predicted downtime is above budget, and never loops for ever on a fixed churn rate.
 - [x] **3.5 Cutover state machine.** Pure states on both sides, plus the fencing epoch.
   **Done when** exhaustive tests over every crash point on both sides find no state where two copies are writable, or none is recoverable.
-- [ ] **3.6 Target layout plan.** Map source partitions to target extents on a bigger disk (reuses the `bootshift-core` planner).
+- [x] **3.6 Target layout plan.** Map source partitions to target extents on a bigger disk (reuses the `bootshift-core` planner).
   **Done when** proptest shows every source byte maps to exactly one target byte and identity fields are preserved.
 
 ### Phase 4 — Receiver
