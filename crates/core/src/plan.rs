@@ -24,6 +24,19 @@ pub enum Operation {
     RecreateSwap { partition: Partition },
 }
 
+impl Operation {
+    /// The partition this operation changes.
+    pub fn partition(&self) -> Guid {
+        match self {
+            Operation::Shrink { partition, .. }
+            | Operation::Move { partition, .. }
+            | Operation::Grow { partition, .. }
+            | Operation::RemoveSwap { partition } => *partition,
+            Operation::RecreateSwap { partition } => partition.unique_guid,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plan {
     pub operations: Vec<Operation>,

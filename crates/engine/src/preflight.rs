@@ -2,11 +2,9 @@
 //! be determined counts as a refusal.
 
 use bootshift_core::layout::{Content, Layout};
-use bootshift_core::plan::Operation;
+use bootshift_core::plan::{Operation, Plan};
 use bootshift_core::refusal::Refusal;
 use bootshift_fs::smart::Health;
-
-use crate::run_plan::RunPlan;
 
 const MIN_BATTERY_PERCENT: u8 = 50;
 
@@ -36,7 +34,8 @@ pub struct Power {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EspSpace {
     pub free: Option<u64>,
-    pub needed: u64,
+    /// `None` when the running kernel's image couldn't be found to measure.
+    pub needed: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,19 +86,23 @@ pub fn evaluate(facts: &Facts, layout: &Layout) -> Vec<Refusal> {
             "Restart the computer, then try again.",
         );
     }
-    match facts.esp.free {
-        Some(free) if free >= facts.esp.needed => {}
-        Some(free) => refuse(
+    match (facts.esp.free, facts.esp.needed) {
+        (Some(free), Some(needed)) if free >= needed => {}
+        (Some(free), Some(needed)) => refuse(
             &format!(
                 "The EFI system partition has {} MiB free, and BootShift needs {} MiB for its recovery system.",
                 free >> 20,
-                facts.esp.needed.div_ceil(1 << 20)
+                needed.div_ceil(1 << 20)
             ),
             "Remove old kernels or vendor files from the EFI system partition.",
         ),
-        None => refuse(
+        (None, _) => refuse(
             "BootShift couldn't find how much space is free on the EFI system partition.",
             "Make sure the EFI system partition is mounted (usually at /boot/efi).",
+        ),
+        (_, None) => refuse(
+            "BootShift couldn't find the running kernel's image in /boot.",
+            "Make sure /boot is mounted, restart if the kernel was just updated, then try again.",
         ),
     }
     if let Bootloader::Unsupported(why) = &facts.bootloader {
@@ -130,15 +133,15 @@ pub fn evaluate(facts: &Facts, layout: &Layout) -> Vec<Refusal> {
 
 /// Operations this build can't yet do safely. Shrinking ext4 or NTFS, and growing NTFS, need a
 /// guarded run (task 0.6): the tools that do them can't survive a power cut on their own.
-pub fn unavailable_operations(run: &RunPlan) -> Vec<Refusal> {
+pub fn unavailable_operations(layout: &Layout, plan: &Plan) -> Vec<Refusal> {
     let mut refusals = Vec::new();
-    for operation in &run.plan.operations {
+    for operation in &plan.operations {
         let (partition, action) = match operation {
             Operation::Shrink { partition, .. } => (*partition, "shrink"),
             Operation::Grow { partition, .. } => (*partition, "grow"),
             _ => continue,
         };
-        let Some(partition) = run.layout.partition(partition) else {
+        let Some(partition) = layout.partition(partition) else {
             continue;
         };
         let needs_guard = matches!(
@@ -200,7 +203,7 @@ mod tests {
             kernel_modules_present: true,
             esp: EspSpace {
                 free: Some(80 << 20),
-                needed: 40 << 20,
+                needed: Some(40 << 20),
             },
             bootloader: Bootloader::Grub {
                 vendor: "ubuntu".to_string(),
@@ -283,7 +286,7 @@ mod tests {
         let facts = Facts {
             esp: EspSpace {
                 free: None,
-                needed: 1,
+                needed: Some(1),
             },
             ..good_facts()
         };
@@ -291,11 +294,23 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_kernel_image_is_refused() {
+        let facts = Facts {
+            esp: EspSpace {
+                free: Some(80 << 20),
+                needed: None,
+            },
+            ..good_facts()
+        };
+        assert!(reasons(&facts)[0].contains("kernel's image"));
+    }
+
+    #[test]
     fn too_little_esp_space_names_both_sizes() {
         let facts = Facts {
             esp: EspSpace {
                 free: Some(20 << 20),
-                needed: 40 << 20,
+                needed: Some(40 << 20),
             },
             ..good_facts()
         };
@@ -322,19 +337,11 @@ mod tests {
         assert_eq!(reasons(&facts).len(), 8);
     }
 
-    fn run_with(content: Content, operation: Operation) -> RunPlan {
-        RunPlan {
-            layout: layout_with(content),
-            plan: bootshift_core::plan::Plan {
-                operations: vec![operation],
-            },
-            swaps: Default::default(),
-            boot: crate::run_plan::BootRestore {
-                esp_partition: 1,
-                grub_vendor: "ubuntu".to_string(),
-                original_boot_order: Vec::new(),
-            },
-        }
+    fn unavailable(content: Content, operation: Operation) -> usize {
+        let plan = Plan {
+            operations: vec![operation],
+        };
+        unavailable_operations(&layout_with(content), &plan).len()
     }
 
     #[test]
@@ -347,20 +354,11 @@ mod tests {
             partition: Guid([1; 16]),
             len: Sectors(4096),
         };
-        assert_eq!(
-            unavailable_operations(&run_with(Content::Ext4, shrink.clone())).len(),
-            1
-        );
-        assert_eq!(
-            unavailable_operations(&run_with(Content::Ntfs, shrink.clone())).len(),
-            1
-        );
-        assert_eq!(
-            unavailable_operations(&run_with(Content::Ntfs, grow.clone())).len(),
-            1
-        );
-        assert!(unavailable_operations(&run_with(Content::Ext4, grow)).is_empty());
-        assert!(unavailable_operations(&run_with(Content::Btrfs, shrink)).is_empty());
+        assert_eq!(unavailable(Content::Ext4, shrink.clone()), 1);
+        assert_eq!(unavailable(Content::Ntfs, shrink.clone()), 1);
+        assert_eq!(unavailable(Content::Ntfs, grow.clone()), 1);
+        assert_eq!(unavailable(Content::Ext4, grow), 0);
+        assert_eq!(unavailable(Content::Btrfs, shrink), 0);
     }
 
     #[test]

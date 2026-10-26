@@ -13,7 +13,15 @@ name = "bootshift"
 path = "src/main.rs"
 
 [dependencies]
+bootshift-boot.workspace = true
+bootshift-core.workspace = true
+bootshift-disk.workspace = true
 bootshift-engine.workspace = true
+bootshift-fs.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+rustix.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

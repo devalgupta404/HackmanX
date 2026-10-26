@@ -40,6 +40,18 @@ pub fn vendors_with_config(esp: &Path) -> io::Result<Vec<String>> {
     Ok(vendors)
 }
 
+/// The vendor directory whose GRUB starts this system. With several, the one named like the
+/// firmware's current boot entry (such as `ubuntu`); `None` if that can't be told.
+pub fn pick_vendor(vendors: &[String], current_entry_label: Option<&str>) -> Option<String> {
+    match vendors {
+        [only] => Some(only.clone()),
+        _ => {
+            let label = current_entry_label?.to_lowercase();
+            vendors.iter().find(|v| v.to_lowercase() == label).cloned()
+        }
+    }
+}
+
 /// Replaces `EFI/<vendor>/grub.cfg` with `config`, first saving the original beside it. Safe to
 /// repeat: once a backup exists it is never overwritten, so the true original is kept.
 pub fn install_redirect(esp: &Path, vendor: &str, config: &str) -> io::Result<()> {
@@ -121,6 +133,16 @@ mod tests {
     fn finds_vendors_that_have_a_grub_config() {
         let esp = esp();
         assert_eq!(vendors_with_config(esp.path()).unwrap(), ["ubuntu"]);
+    }
+
+    #[test]
+    fn picks_the_only_vendor_or_the_one_named_like_the_current_entry() {
+        let one = ["ubuntu".to_string()];
+        let two = ["fedora".to_string(), "ubuntu".to_string()];
+        assert_eq!(pick_vendor(&one, None).as_deref(), Some("ubuntu"));
+        assert_eq!(pick_vendor(&two, Some("Ubuntu")).as_deref(), Some("ubuntu"));
+        assert_eq!(pick_vendor(&two, None), None);
+        assert_eq!(pick_vendor(&two, Some("Windows Boot Manager")), None);
     }
 
     #[test]
