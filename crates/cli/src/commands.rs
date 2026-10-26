@@ -1,0 +1,211 @@
+//! The commands run in the normal system. The work happens in `engine::service`; this module
+//! reads arguments and prints results.
+
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, bail};
+use bootshift_core::layout::{Layout, Target};
+use bootshift_core::plan::{Operation, Plan};
+use bootshift_core::refusal::Refusal;
+use bootshift_engine::preflight;
+use bootshift_engine::service::{self, Inspected, ServiceError, SystemPaths};
+use bootshift_fs::run::SystemRunner;
+
+pub fn probe(disk: &Path, target_template: bool) -> anyhow::Result<()> {
+    let inspected = inspect(disk)?;
+    if target_template {
+        let target = service::current_target(&inspected.layout);
+        println!("{}", serde_json::to_string_pretty(&target)?);
+    } else {
+        print_layout(&inspected);
+    }
+    Ok(())
+}
+
+pub fn plan(disk: &Path, target: &Path) -> anyhow::Result<()> {
+    let inspected = inspect(disk)?;
+    let plan = planned(&inspected.layout, target)?;
+    print_plan(&inspected.layout, &plan);
+    Ok(())
+}
+
+pub fn check(disk: &Path, target: &Path) -> anyhow::Result<()> {
+    let inspected = inspect(disk)?;
+    let plan = planned(&inspected.layout, target)?;
+    let (_, refusals) =
+        service::run_checks(&SystemRunner, &SystemPaths::default(), &inspected, &plan);
+    if !refusals.is_empty() {
+        print_refusals(&refusals);
+        bail!("{} check(s) failed", refusals.len());
+    }
+    println!("Every check passed.");
+    Ok(())
+}
+
+pub fn apply(
+    disk: &Path,
+    target: &Path,
+    confirmed: bool,
+    init: Option<PathBuf>,
+) -> anyhow::Result<()> {
+    let inspected = inspect(disk)?;
+    let plan = planned(&inspected.layout, target)?;
+    if plan.operations.is_empty() {
+        println!("The disk already has this layout.");
+        return Ok(());
+    }
+    print_plan(&inspected.layout, &plan);
+    if !confirmed {
+        println!(
+            "Nothing has changed. Make sure your data is backed up, then run again with --yes."
+        );
+        return Ok(());
+    }
+
+    let init = match init {
+        Some(path) => path,
+        None => std::env::current_exe().context("finding the bootshift binary")?,
+    };
+    let work_dir = std::env::temp_dir().join(format!("bootshift-{}", std::process::id()));
+    std::fs::create_dir_all(&work_dir).context("creating a work directory")?;
+    let result = service::apply(
+        &SystemRunner,
+        &SystemPaths::default(),
+        &inspected,
+        &plan,
+        &init,
+        &work_dir,
+    );
+    let _ = std::fs::remove_dir_all(&work_dir);
+    result.map_err(explain)?;
+
+    println!("Everything is ready. Restart the computer to begin.");
+    println!("If the power goes out during the change, just turn the computer back on.");
+    Ok(())
+}
+
+fn inspect(disk: &Path) -> anyhow::Result<Inspected> {
+    service::inspect(&SystemRunner, disk).map_err(explain)
+}
+
+fn planned(layout: &Layout, target: &Path) -> anyhow::Result<Plan> {
+    let text =
+        std::fs::read_to_string(target).with_context(|| format!("reading {}", target.display()))?;
+    let target: Target = serde_json::from_str(&text)
+        .with_context(|| format!("{} is not a target layout", target.display()))?;
+    service::plan_target(layout, &target).map_err(explain)
+}
+
+/// Prints refusals with their fixes, and turns the error into one for the exit status.
+fn explain(error: ServiceError) -> anyhow::Error {
+    if let ServiceError::Refused(refusals) = &error {
+        print_refusals(refusals);
+        return anyhow::anyhow!("{} check(s) failed, so nothing was changed", refusals.len());
+    }
+    error.into()
+}
+
+fn print_layout(inspected: &Inspected) {
+    let layout = &inspected.layout;
+    let sector = layout.geometry.sector_size;
+    println!(
+        "{}: {}, {sector}-byte sectors",
+        inspected.disk.path.display(),
+        size(inspected.disk.size)
+    );
+    println!(
+        "{:>3}  {:<20} {:>10} {:>10}  {:<13} {:>10} {:>14}",
+        "#", "Name", "Start", "Size", "Contents", "Used", "Can shrink to"
+    );
+    for p in &layout.partitions {
+        let min = p
+            .min_len
+            .map_or("-".to_string(), |s| size(s.to_bytes(sector)));
+        println!(
+            "{:>3}  {:<20} {:>10} {:>10}  {:<13} {:>10} {:>14}",
+            p.number,
+            p.name.chars().take(20).collect::<String>(),
+            size(p.extent.start.0 * u64::from(sector)),
+            size(p.extent.len.to_bytes(sector)),
+            p.content.name(),
+            size(p.used.to_bytes(sector)),
+            min
+        );
+    }
+}
+
+fn print_plan(layout: &Layout, plan: &Plan) {
+    if plan.operations.is_empty() {
+        println!("The disk already has this layout.");
+        return;
+    }
+    for (index, operation) in plan.operations.iter().enumerate() {
+        println!("{:>2}. {}", index + 1, describe(layout, operation));
+    }
+    let sector = layout.geometry.sector_size;
+    println!(
+        "Copies about {} in total, during one restart.",
+        size(plan.sectors_to_copy().to_bytes(sector))
+    );
+    let unavailable = preflight::unavailable_operations(layout, plan);
+    if !unavailable.is_empty() {
+        print_refusals(&unavailable);
+    }
+}
+
+fn describe(layout: &Layout, operation: &Operation) -> String {
+    let sector = layout.geometry.sector_size;
+    let at = |lba: u64| size(lba * u64::from(sector));
+    let name = layout
+        .partition(operation.partition())
+        .map_or_else(|| operation.partition().to_string(), |p| p.label());
+    match operation {
+        Operation::Shrink { len, .. } => format!("Shrink {name} to {}", size(len.to_bytes(sector))),
+        Operation::Move {
+            to, copy_estimate, ..
+        } => format!(
+            "Move {name} to {} (copies about {})",
+            at(to.0),
+            size(copy_estimate.to_bytes(sector))
+        ),
+        Operation::Grow { len, .. } => format!("Grow {name} to {}", size(len.to_bytes(sector))),
+        Operation::RemoveSwap { .. } => format!("Set aside swap {name}"),
+        Operation::RecreateSwap { partition } => {
+            format!("Recreate swap {name} at {}", at(partition.extent.start.0))
+        }
+    }
+}
+
+fn print_refusals(refusals: &[Refusal]) {
+    for refusal in refusals {
+        eprintln!("✗ {}\n  → {}", refusal.reason, refusal.fix);
+    }
+}
+
+fn size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sizes_are_human_readable() {
+        assert_eq!(size(512), "512 B");
+        assert_eq!(size(1536), "1.5 KiB");
+        assert_eq!(size(256 << 20), "256.0 MiB");
+        assert_eq!(size(512_110_190_592), "476.9 GiB");
+    }
+}

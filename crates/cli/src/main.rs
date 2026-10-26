@@ -1,4 +1,4 @@
-mod inspect;
+mod commands;
 mod recover;
 
 use std::path::PathBuf;
@@ -55,15 +55,15 @@ fn main() -> anyhow::Result<()> {
         Command::Probe {
             disk,
             target_template,
-        } => inspect::probe(&disk, target_template),
-        Command::Plan { disk, target } => inspect::plan(&disk, &target),
-        Command::Check { disk, target } => inspect::check(&disk, &target),
+        } => commands::probe(&disk, target_template),
+        Command::Plan { disk, target } => commands::plan(&disk, &target),
+        Command::Check { disk, target } => commands::check(&disk, &target),
         Command::Apply {
             disk,
             target,
             yes,
             init,
-        } => inspect::apply(&disk, &target, yes, init),
+        } => commands::apply(&disk, &target, yes, init),
         Command::Resume { disk, options } => recover::resume(&disk, &options),
     }
 }
