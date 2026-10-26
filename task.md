@@ -450,7 +450,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 14 — Docs and packaging
 
-- [ ] **14.1** README: what it does, what it refuses and why, and how to recover if something goes wrong.
+- [x] **14.1** README: how it works, what it can do (with today's guarded-run gaps stated honestly), what it refuses and why, how to recover (power cut, error screen, live-USB `resume`, table backup), commands and building.
 - [ ] **14.2** `docs/design.md`: the PDF design updated with section 1.
 - [ ] **14.3** Packages: `.deb`, `.rpm` and AppImage for the GUI, which pull in the filesystem tools as dependencies.
 - [ ] **14.4** Demo script and recording for the hackathon.
