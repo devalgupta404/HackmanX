@@ -12,7 +12,7 @@ use bootshift_boot::cmdline::RecoveryArgs;
 use bootshift_boot::initramfs::MODULE_LIST_PATH;
 use bootshift_core::layout::Guid;
 use bootshift_disk::{Access, RealDevice};
-use bootshift_engine::copier::{CopyOptions, ProgressSink};
+use bootshift_engine::copier::{CopyOptions, MAX_CHUNK, ProgressSink};
 use bootshift_engine::recovery;
 use bootshift_fs::run::{CommandLine, Runner, SystemRunner};
 use rustix::mount::{MountFlags, mount};
@@ -101,18 +101,21 @@ pub fn resume(disk: &Path, kernel_args: &str, accept_unreadable: bool) -> anyhow
     Ok(())
 }
 
-/// The recovery screen, drawn on `/dev/console` to match the app's design: a dark screen, a
-/// green block progress bar that updates in place, and the safety message. Colours are the
-/// 16-colour ANSI set, which every Linux console renders.
+/// The recovery screen, drawn on the console to match the app's design: a dark screen, a bright
+/// title, a green block progress bar, the count of what has moved, and the safety message. The
+/// whole block is redrawn in place on each update (cursor home, each line erased to its end), so
+/// it updates without scrolling or flicker. Colours are the 16-colour ANSI set, which every
+/// Linux console renders.
 #[derive(Default)]
 struct ConsoleProgress {
     out: Vec<std::fs::File>,
     opened: bool,
-    banner_drawn: bool,
+    cleared: bool,
     last_percent: Option<u64>,
 }
 
-const BAR_CELLS: u64 = 30;
+const BAR_CELLS: u64 = 36;
+const RULE_WIDTH: usize = 60;
 
 /// The screen (`/dev/tty0`, the VGA console in the VM window) and the system console
 /// (`/dev/console`, which is the serial port when the kernel has `console=ttyS0`). Writing to
@@ -137,49 +140,79 @@ impl ConsoleProgress {
             let _ = file.write_all(text.as_bytes());
         }
     }
+}
 
-    fn banner(&mut self) {
-        if self.banner_drawn {
-            return;
-        }
-        self.banner_drawn = true;
-        self.write(concat!(
-            "\x1b[40m\x1b[2J\x1b[H",
-            "\n  \x1b[1;97mBootShift\x1b[0m\n",
-            "  \x1b[90mRearranging your disk, before any operating system starts.\x1b[0m\n\n",
-            "  \x1b[92mIf the power goes out, just turn the computer back on.\x1b[0m\n",
-            "  \x1b[92mIt resumes from the last verified chunk. No drama.\x1b[0m\n",
-        ));
+/// Builds the whole recovery screen for the run as it stands. Starts at the cursor home position
+/// and erases each line to its end, so writing it over the previous frame updates in place.
+fn screen(done: u64, total: u64) -> String {
+    let percent = (done * 100).checked_div(total).unwrap_or(0).min(100);
+    let filled = (percent * BAR_CELLS / 100).min(BAR_CELLS) as usize;
+    let bar = format!(
+        "\x1b[92m{}\x1b[90m{}\x1b[0m",
+        "█".repeat(filled),
+        "░".repeat(BAR_CELLS as usize - filled),
+    );
+    let chunks = total.div_ceil(MAX_CHUNK).max(1);
+    let chunk_line = if total > 0 && done >= total {
+        format!("all {chunks} chunks copied, flushed, verified, journaled")
+    } else {
+        let at = done.div_ceil(MAX_CHUNK).clamp(1, chunks);
+        format!("chunk {at} of {chunks} copied, flushed, verified, journaled")
+    };
+    let rule = format!("\x1b[90m{}\x1b[0m", "─".repeat(RULE_WIDTH));
+    let rows = [
+        String::new(),
+        "\x1b[1;97mBootShift recovery\x1b[0m".to_string(),
+        "\x1b[90mmoving your partitions, before any operating system starts\x1b[0m".to_string(),
+        String::new(),
+        rule.clone(),
+        String::new(),
+        format!("{bar}  \x1b[1;97m{percent:>3}%\x1b[0m"),
+        format!("\x1b[37m{} of {} moved\x1b[0m", gib(done), gib(total)),
+        format!("\x1b[90m{chunk_line}\x1b[0m"),
+        String::new(),
+        rule,
+        String::new(),
+        "\x1b[92mPower cut? Rude, but fine. Turn the computer back on.\x1b[0m".to_string(),
+        "\x1b[92mBootShift resumes from the last verified chunk. No drama.\x1b[0m".to_string(),
+        "\x1b[93mDo not boot Windows from the firmware menu. A half-moved disk\x1b[0m".to_string(),
+        "\x1b[93mis not something it handles gracefully.\x1b[0m".to_string(),
+    ];
+    let mut out = String::from("\x1b[H");
+    for row in rows {
+        // Two-space margin, then erase the rest of the line so a shorter frame leaves no trail.
+        out.push_str("  ");
+        out.push_str(&row);
+        out.push_str("\x1b[K\n");
     }
+    // Erase anything the previous, taller frame may have left below.
+    out.push_str("\x1b[J");
+    out
 }
 
 impl ProgressSink for ConsoleProgress {
-    fn operation(&mut self, index: u32, count: u32, what: &str) {
-        self.banner();
+    fn operation(&mut self, _index: u32, _count: u32, _what: &str) {
+        // A new operation restarts the bar; force the next `copied` to redraw.
         self.last_percent = None;
-        self.write(&format!("\n  \x1b[37m[{index}/{count}] {what}\x1b[0m\n"));
     }
 
     fn copied(&mut self, done: u64, total: u64) {
         if total == 0 {
             return;
         }
-        let percent = done * 100 / total;
+        let percent = (done * 100 / total).min(100);
         if self.last_percent == Some(percent) {
             return;
         }
         self.last_percent = Some(percent);
-        let filled = (percent * BAR_CELLS / 100).min(BAR_CELLS) as usize;
-        let bar = format!(
-            "\x1b[92m{}\x1b[90m{}\x1b[0m",
-            "█".repeat(filled),
-            "░".repeat(BAR_CELLS as usize - filled),
-        );
-        self.write(&format!(
-            "\r  {bar}  \x1b[1;97m{percent:>3}%\x1b[0m  \x1b[90m{} of {}\x1b[0m",
-            gib(done),
-            gib(total),
-        ));
+        let mut frame = String::new();
+        if !self.cleared {
+            // Black background, cleared once; later frames just redraw from the home position.
+            self.cleared = true;
+            frame.push_str("\x1b[40m\x1b[2J");
+        }
+        frame.push_str(&screen(done, total));
+        self.write(&frame);
     }
 }
 
