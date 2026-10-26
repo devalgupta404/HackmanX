@@ -53,6 +53,10 @@ name = "bootshift-boot"
 version = "0.1.0"
 dependencies = [
  "bootshift-core",
+ "bootshift-disk",
+ "bootshift-fs",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

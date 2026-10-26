@@ -80,7 +80,7 @@ task.md     Ordered work plan and research findings.
 - A new module gets its own file once it is more than a few items. Use `foo.rs` + `foo/` for submodules, not `foo/mod.rs`.
 - Shared dependency versions live in the root `[workspace.dependencies]`. Crates use `name.workspace = true`, never their own version.
 
-**Dependency direction:** `core` ← `disk`, `fs`, `boot` ← `engine` ← `cli`, `helper`. `core` depends on nothing in the workspace. Nothing depends on `gui`.
+**Dependency direction:** `core` ← `disk`, `fs` ← `boot` ← `engine` ← `cli`, `helper`. `core` depends on nothing in the workspace. Nothing depends on `gui`.
 
 ## Commands
 
