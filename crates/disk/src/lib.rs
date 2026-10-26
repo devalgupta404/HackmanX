@@ -5,6 +5,7 @@
 mod crash_disk;
 mod device;
 mod faulty_disk;
+pub mod fibmap;
 mod gpt;
 mod guard;
 mod journal_store;

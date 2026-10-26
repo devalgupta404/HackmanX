@@ -13,6 +13,7 @@ bootshift-core.workspace = true
 crc32c.workspace = true
 gptman.workspace = true
 rustix.workspace = true
+libc.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

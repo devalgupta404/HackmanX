@@ -16,6 +16,7 @@ crc32c = "0.6"
 blake3 = "1.5"
 gptman = { version = "3.1", default-features = false }
 rustix = { version = "1", features = ["fs", "system", "mount"] }
+libc = "0.2"
 tempfile = "3"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }

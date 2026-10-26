@@ -28,7 +28,8 @@ pub fn create(path: &Path, contents: &[u8]) -> io::Result<()> {
 }
 
 /// The file's extents as byte offsets on the whole disk, given where its filesystem's
-/// partition starts.
+/// partition starts. FIEMAP through `filefrag` where the filesystem supports it; on vfat,
+/// which doesn't, `filefrag` prints an empty table and the FIBMAP ioctl answers instead.
 pub fn extents(
     runner: &dyn Runner,
     path: &Path,
@@ -39,10 +40,19 @@ pub fn extents(
         .arg(format!("-b{UNIT}"))
         .path(path);
     let output = runner.run_ok(&command)?;
-    let extents = parse_filefrag(&output.text()).map_err(|detail| RunError::UnexpectedOutput {
-        command: command.to_string(),
-        detail,
-    })?;
+    let mut extents =
+        parse_filefrag(&output.text()).map_err(|detail| RunError::UnexpectedOutput {
+            command: command.to_string(),
+            detail,
+        })?;
+    if extents.is_empty() {
+        extents = bootshift_disk::fibmap::file_extents(path).map_err(|error| {
+            RunError::UnexpectedOutput {
+                command: format!("FIBMAP {}", path.display()),
+                detail: error.to_string(),
+            }
+        })?;
+    }
     Ok(extents
         .into_iter()
         .map(|extent| FileExtent {
@@ -83,9 +93,6 @@ pub fn parse_filefrag(text: &str) -> Result<Vec<FileExtent>, String> {
             len: len * UNIT,
         });
     }
-    if extents.is_empty() {
-        return Err("no extents listed".to_string());
-    }
     Ok(extents)
 }
 
@@ -122,7 +129,11 @@ mod tests {
     }
 
     #[test]
-    fn refuses_output_without_extents() {
-        assert!(parse_filefrag("journal.bin: 0 extents found\n").is_err());
+    fn an_empty_table_is_not_an_error_so_fibmap_can_answer() {
+        // vfat: filefrag prints the summary but no table. The caller falls back to FIBMAP.
+        assert_eq!(
+            parse_filefrag("Filesystem type is: 4d44\njournal.bin: 1 extent found\n").unwrap(),
+            Vec::new()
+        );
     }
 }

@@ -108,7 +108,12 @@ pub fn prepare(p: &Prepare<'_>) -> Result<RecoveryArgs, PrepareError> {
         disk_guid,
         journal: extents,
     };
-    let kernel_args = format!("{} {EXTRA_KERNEL_ARGS}", args.to_kernel_args());
+    let mut kernel_args = format!("{} {EXTRA_KERNEL_ARGS}", args.to_kernel_args());
+    // The VM test harness appends `console=ttyS0` here to watch recovery on the serial port.
+    if let Ok(extra) = std::env::var("BOOTSHIFT_EXTRA_KERNEL_ARGS") {
+        kernel_args.push(' ');
+        kernel_args.push_str(&extra);
+    }
     write_synced(&dir.join("recovery-args.txt"), kernel_args.as_bytes())?;
 
     let config = grub::recovery_config(&esp_fs_uuid, &kernel_args);
