@@ -1,6 +1,7 @@
 //! Pure planning logic for BootShift: layout model, planner, validation and journal codec.
 //! This crate performs no I/O.
 
+pub mod journal;
 pub mod layout;
 pub mod plan;
 pub mod planner;
