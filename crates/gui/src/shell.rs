@@ -121,6 +121,8 @@ fn rail(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
         .inner_margin(Margin::symmetric(9, 13))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
+            goals_tab(ui, app, true, actions);
+            ui.add_space(10.0);
             for (index, screen) in Screen::ALL.into_iter().enumerate() {
                 if index > 0 {
                     ui.add_space(1.0);
@@ -167,6 +169,7 @@ fn rail_strip(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
         brand(ui);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
+            goals_tab(ui, app, false, actions);
             for (index, screen) in Screen::ALL.into_iter().enumerate() {
                 step(ui, app, screen, index, false, actions);
             }
@@ -300,6 +303,74 @@ fn step(
     }
     if reachable {
         response.on_hover_cursor(CursorIcon::PointingHand);
+    }
+}
+
+/// The Goals launcher, shown above the numbered steps. It isn't one of the five steps, so it
+/// wears a grid mark instead of a number and is always reachable: you can go back to the goals
+/// from anywhere in the flow.
+fn goals_tab(ui: &mut Ui, app: &App, labelled: bool, actions: &mut Vec<Action>) {
+    let current = app.screen == Screen::Home;
+    let width = if labelled {
+        ui.available_width()
+    } else {
+        21.0 + 20.0
+    };
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 35.0), Sense::click());
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, current, "Goals"));
+    if response.clicked() && !current {
+        actions.push(Action::Show(Screen::Home));
+    }
+    let hovered = response.hovered() && !current;
+    let painter = ui.painter();
+    if current || hovered {
+        painter.rect_filled(rect, 3, theme::DECK_HIGH);
+    }
+    let icon = Rect::from_center_size(
+        Pos2::new(rect.left() + 10.0 + 10.5, rect.center().y),
+        Vec2::splat(21.0),
+    );
+    let (fill, border, glyph) = if current {
+        (theme::SIGNAL, theme::SIGNAL, theme::SIGNAL_INK)
+    } else if hovered {
+        (theme::VOID, theme::RULE_HOVER, theme::INK)
+    } else {
+        (theme::VOID, theme::RULE, theme::DIM)
+    };
+    painter.circle_filled(icon.center(), 10.5, fill);
+    painter.circle_stroke(icon.center(), 10.0, Stroke::new(1.0, border));
+    grid_glyph(painter, icon.center(), glyph);
+    if labelled {
+        let colour = if current || hovered {
+            theme::INK
+        } else {
+            theme::DIM
+        };
+        let weight = if current {
+            Weight::SemiBold
+        } else {
+            Weight::Regular
+        };
+        let text = widgets::galley(ui, "Goals", Face::Sans(weight), 13.0, colour);
+        widgets::text_at(
+            painter,
+            Align2::LEFT_CENTER,
+            Pos2::new(icon.right() + 9.0, rect.center().y),
+            text,
+        );
+    }
+    if widgets::shows_focus(ui, &response) {
+        widgets::focus_ring(painter, rect, 3);
+    }
+    response.on_hover_cursor(CursorIcon::PointingHand);
+}
+
+/// A 2x2 of small squares: the "all the goal cards" mark.
+fn grid_glyph(painter: &egui::Painter, centre: Pos2, colour: Color32) {
+    let offset = 2.7;
+    for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        let c = Pos2::new(centre.x + dx * offset, centre.y + dy * offset);
+        painter.rect_filled(Rect::from_center_size(c, Vec2::splat(3.2)), 1, colour);
     }
 }
 
