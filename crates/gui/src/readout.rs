@@ -16,12 +16,32 @@ const BYTES_PER_SECOND: u64 = 450 << 20;
 pub fn show(ui: &mut Ui, app: &App) {
     ui.spacing_mut().item_spacing = Vec2::ZERO;
     match app.screen {
+        Screen::Home => home(ui, app),
         Screen::Arrange => arrange(ui, app),
         Screen::Plan => plan(ui, app),
         Screen::Checks => checks(ui, app),
         Screen::Restart => restart(ui),
         Screen::Done => done(ui, app),
     }
+}
+
+/// On the home screen the readout shows the disk being worked on, so the choice of goal has
+/// context.
+fn home(ui: &mut Ui, app: &App) {
+    let Some(probed) = &app.probed else {
+        readout_heading(ui, "Disk");
+        readout_text(ui, "Reading the disk…");
+        return;
+    };
+    readout_heading(ui, "This disk");
+    readout_text(ui, &probed.disk);
+    readout_texts(
+        ui,
+        &[
+            "Pick a goal on the left, and BootShift builds the change for you.",
+            "Nothing touches the disk until you have seen the plan and the checks pass.",
+        ],
+    );
 }
 
 fn arrange(ui: &mut Ui, app: &App) {

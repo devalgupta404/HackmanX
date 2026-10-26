@@ -2,10 +2,11 @@
 //! the buttons live in the action bar.
 
 use eframe::egui::{
-    self, Align2, Margin, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, text::LayoutJob,
+    self, Align2, Color32, CornerRadius, Margin, Pos2, Rect, Role, Sense, Stroke, StrokeKind, Ui,
+    Vec2, WidgetInfo, text::LayoutJob,
 };
 
-use crate::app::{Action, App, RowState, Screen};
+use crate::app::{Action, App, Goal, RowState, Screen};
 use crate::disk_bar::DiskBar;
 use crate::grid::{self, Column};
 use crate::theme::{self, Face, Weight, layout, size};
@@ -15,6 +16,7 @@ use crate::{console, gutter, shell, table};
 pub fn show(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
     ui.spacing_mut().item_spacing = Vec2::ZERO;
     match app.screen {
+        Screen::Home => home(ui, app, actions, narrow),
         Screen::Arrange => arrange(ui, app, actions, narrow),
         Screen::Plan => plan(ui, app, narrow),
         Screen::Checks => checks(ui, app, actions, narrow),
@@ -385,6 +387,120 @@ fn paint_mark(ui: &Ui, painter: &egui::Painter, rect: Rect, state: RowState) {
                 widgets::cross(painter, centre, 6.0, colour, 1.4);
             }
         }
+    }
+}
+
+/* ---------- home ---------- */
+
+fn home(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
+    header(
+        ui,
+        "What would you like to do?",
+        "BootShift works out the safe way to do it, and shows you before anything changes.",
+        narrow,
+    );
+    goal_card(ui, app, Goal::InstallOs, true, actions);
+    ui.add_space(12.0);
+    let middle = [Goal::GiveSpace, Goal::FreeSpace, Goal::MovePartition, Goal::CleanUp];
+    if narrow {
+        for goal in middle {
+            goal_card(ui, app, goal, false, actions);
+            ui.add_space(12.0);
+        }
+    } else {
+        for pair in middle.chunks(2) {
+            ui.columns(2, |cols| {
+                for (i, &goal) in pair.iter().enumerate() {
+                    goal_card(&mut cols[i], app, goal, false, actions);
+                }
+            });
+            ui.add_space(12.0);
+        }
+    }
+    goal_card(ui, app, Goal::DoItMyself, false, actions);
+}
+
+fn goal_colour(goal: Goal) -> Color32 {
+    match goal {
+        Goal::InstallOs => theme::SIGNAL,
+        Goal::GiveSpace => Color32::from_rgb(0x38, 0xb2, 0xa8),
+        Goal::FreeSpace => Color32::from_rgb(0x4d, 0x7e, 0xf2),
+        Goal::MovePartition => Color32::from_rgb(0xb0, 0x7c, 0xf5),
+        Goal::CleanUp | Goal::DoItMyself => theme::DIM,
+    }
+}
+
+fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut Vec<Action>) {
+    let width = ui.available_width();
+    let height = if featured { 98.0 } else { 86.0 };
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), Sense::click());
+    let enabled = app.probed.is_some();
+    let hovered = response.hovered() && enabled;
+
+    // Lay the text out before borrowing the painter.
+    let title = widgets::galley(ui, goal.title(), Face::Sans(Weight::SemiBold), 16.0, theme::INK);
+    let chip = Rect::from_min_size(
+        rect.left_top() + Vec2::new(16.0, (height - if featured { 46.0 } else { 42.0 }) / 2.0),
+        Vec2::splat(if featured { 46.0 } else { 42.0 }),
+    );
+    let text_x = chip.right() + 15.0;
+    let blurb = widgets::elided(
+        ui,
+        goal.blurb(),
+        Face::Sans(Weight::Regular),
+        13.0,
+        theme::DIM,
+        rect.right() - text_x - 18.0,
+    );
+    let tag = match goal {
+        Goal::InstallOs => Some(("MOST COMMON", theme::SIGNAL)),
+        Goal::DoItMyself => Some(("ADVANCED", theme::FAINT)),
+        _ => None,
+    };
+    let tag = tag.map(|(text, colour)| (widgets::galley(ui, text, Face::Mono(Weight::Medium), 9.5, colour), text_x));
+
+    let painter = ui.painter();
+    let radius = CornerRadius::same(10);
+    let bg = if featured {
+        theme::mix(theme::SIGNAL, 0.06, theme::DECK_HIGH)
+    } else {
+        theme::DECK_HIGH
+    };
+    painter.rect_filled(rect, radius, bg);
+    let border = if hovered {
+        theme::RULE_HOVER
+    } else if featured {
+        theme::alpha(theme::SIGNAL, 0.4)
+    } else {
+        theme::RULE
+    };
+    painter.rect_stroke(rect, radius, Stroke::new(1.0, border), StrokeKind::Inside);
+
+    painter.rect_filled(chip, CornerRadius::same(9), theme::DECK);
+    painter.rect_filled(chip.shrink(14.0), CornerRadius::same(4), goal_colour(goal));
+
+    let title_y = rect.top() + if featured { 24.0 } else { 20.0 };
+    widgets::text_at(painter, Align2::LEFT_TOP, Pos2::new(text_x, title_y), title);
+    widgets::text_at(
+        painter,
+        Align2::LEFT_TOP,
+        Pos2::new(text_x, title_y + 24.0),
+        blurb,
+    );
+    if let Some((galley, x)) = tag {
+        widgets::text_at(
+            painter,
+            Align2::LEFT_TOP,
+            Pos2::new(x, rect.top() + if featured { 8.0 } else { 7.0 }),
+            galley,
+        );
+    }
+    if hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, goal.title()));
+    if response.clicked() && enabled {
+        actions.push(Action::ChooseGoal(goal));
     }
 }
 

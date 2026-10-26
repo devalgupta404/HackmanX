@@ -458,6 +458,8 @@ fn buttons(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
         }
     };
     match app.screen {
+        // The home screen's actions are the goal cards themselves.
+        Screen::Home => {}
         Screen::Arrange => {
             push(
                 ui,

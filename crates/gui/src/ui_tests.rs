@@ -27,6 +27,10 @@ fn harness(width: f32) -> Harness<'static, App> {
             App::new(Worker::inline(Box::new(DemoBackend::new()))),
         );
     harness.run_steps(3);
+    // The app opens on the home screen; the flow tests start in the editor, so enter it and let
+    // the screen settle before the test's first interaction.
+    harness.get_by_label("Do it myself").click();
+    harness.run_steps(6);
     harness
 }
 
@@ -111,6 +115,27 @@ fn arrange_the_demo_story(harness: &mut Harness<'_, App>) {
         extent(harness, 4).end(),
         "stops against recovery"
     );
+}
+
+#[test]
+fn home_screen_lists_the_goals() {
+    let mut harness = Harness::builder()
+        .with_size(Vec2::new(1440.0, 900.0))
+        .with_step_dt(STEP)
+        .with_max_steps(2_000)
+        .build_ui_state(
+            |ui, app: &mut App| app.frame(ui),
+            App::new(Worker::inline(Box::new(DemoBackend::new()))),
+        );
+    harness.run_steps(3);
+    assert_eq!(harness.state().screen, Screen::Home);
+    harness.get_by_label("Install an operating system");
+    harness.get_by_label("Do it myself");
+    snapshot(&mut harness, "00-home");
+    harness.get_by_label("Install an operating system").click();
+    harness.run_steps(4);
+    assert_eq!(harness.state().screen, Screen::Arrange);
+    assert_eq!(harness.state().goal, Some(crate::app::Goal::InstallOs));
 }
 
 #[test]

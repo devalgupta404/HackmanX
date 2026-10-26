@@ -19,6 +19,8 @@ const DONE_DELAY: f64 = 1.2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Screen {
+    /// The launcher: pick a goal. Comes before the flow and isn't one of its numbered steps.
+    Home,
     Arrange,
     Plan,
     Checks,
@@ -27,6 +29,7 @@ pub enum Screen {
 }
 
 impl Screen {
+    /// The flow's numbered steps, shown in the rail. `Home` is the launcher, not a step.
     pub const ALL: [Screen; 5] = [
         Screen::Arrange,
         Screen::Plan,
@@ -37,6 +40,7 @@ impl Screen {
 
     pub fn name(self) -> &'static str {
         match self {
+            Screen::Home => "Home",
             Screen::Arrange => "Arrange",
             Screen::Plan => "Plan",
             Screen::Checks => "Checks",
@@ -46,8 +50,48 @@ impl Screen {
     }
 }
 
+/// What the person wants to do, chosen on the home screen. Every goal but `DoItMyself` is a
+/// friendly front-end that will build a target; today they all open the editor, which is the
+/// `DoItMyself` experience, while the simplified screens are built out one at a time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Goal {
+    InstallOs,
+    GiveSpace,
+    FreeSpace,
+    MovePartition,
+    CleanUp,
+    DoItMyself,
+}
+
+impl Goal {
+    pub fn title(self) -> &'static str {
+        match self {
+            Goal::InstallOs => "Install an operating system",
+            Goal::GiveSpace => "Give a partition more space",
+            Goal::FreeSpace => "Free up space from a partition",
+            Goal::MovePartition => "Move a partition",
+            Goal::CleanUp => "Clean up a drive",
+            Goal::DoItMyself => "Do it myself",
+        }
+    }
+
+    pub fn blurb(self) -> &'static str {
+        match self {
+            Goal::InstallOs => {
+                "Make room for Linux or another OS. BootShift frees a clean block for the installer."
+            }
+            Goal::GiveSpace => "Pick the one that's full. BootShift finds nearby space and grows it.",
+            Goal::FreeSpace => "Carve some room off a roomy partition to use elsewhere.",
+            Goal::MovePartition => "Slide one along the disk; its contents go nowhere, only its place.",
+            Goal::CleanUp => "Remove or reformat a partition you no longer need.",
+            Goal::DoItMyself => "The full disk editor: drag partitions and edges exactly where you want.",
+        }
+    }
+}
+
 pub enum Action {
     ChooseDisk(String),
+    ChooseGoal(Goal),
     Show(Screen),
     Pick(Guid),
     Edit(Guid, Extent),
@@ -100,6 +144,9 @@ pub struct App {
     pending_apply: Option<u64>,
     pub screen: Screen,
     pub reached: Screen,
+    /// The goal chosen on the home screen, if any. Future goal screens read it; today every
+    /// goal opens the editor.
+    pub goal: Option<Goal>,
     pub screen_shown_at: f64,
     pub status: String,
     pub run: Option<RecoveryRun>,
@@ -131,8 +178,9 @@ impl App {
             check_problems: Vec::new(),
             backed_up: false,
             pending_apply: None,
-            screen: Screen::Arrange,
+            screen: Screen::Home,
             reached: Screen::Arrange,
+            goal: None,
             screen_shown_at: 0.0,
             status: String::new(),
             run: None,
@@ -202,9 +250,10 @@ impl App {
                 self.probed = Some(probed);
                 self.reached = Screen::Arrange;
                 self.selected = None;
-                self.show(Screen::Arrange);
                 self.on_target_change(target);
-                self.status = "Drag a partition to move it, or an edge to resize it.".to_string();
+                // The disk is ready; wait on the home screen for the person to pick a goal.
+                self.show(Screen::Home);
+                self.status = "Pick what you'd like to do.".to_string();
             }
             Err(refusals) => {
                 self.disk_problems = refusals;
@@ -271,6 +320,22 @@ impl App {
         self.reached = self.reached.max(next);
         self.screen_shown_at = self.now;
         self.status.clear();
+    }
+
+    /// Opens a goal. Today every goal leads to the editor (the "do it myself" experience); the
+    /// simplified per-goal screens are built out one at a time, and will set a target here
+    /// before showing the editor as a confirmation.
+    fn choose_goal(&mut self, goal: Goal) {
+        if self.probed.is_none() {
+            return;
+        }
+        self.goal = Some(goal);
+        self.show(Screen::Arrange);
+        self.status = match goal {
+            Goal::DoItMyself => "Drag a partition to move it, or an edge to resize it.",
+            _ => "Arrange the change, then see the plan. A simpler screen for this is coming.",
+        }
+        .to_string();
     }
 
     fn pick(&mut self, guid: Guid) {
@@ -467,6 +532,7 @@ impl App {
     fn act(&mut self, action: Action) {
         match action {
             Action::ChooseDisk(disk) => self.open_disk(disk),
+            Action::ChooseGoal(goal) => self.choose_goal(goal),
             Action::Show(screen) => self.show(screen),
             Action::Pick(guid) => self.pick(guid),
             Action::Edit(guid, extent) => {
