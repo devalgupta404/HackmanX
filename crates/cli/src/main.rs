@@ -26,6 +26,17 @@ enum Command {
     Plan { disk: PathBuf, target: PathBuf },
     /// Run every safety check for reaching TARGET. Changes nothing.
     Check { disk: PathBuf, target: PathBuf },
+    /// Check everything, then prepare the change to happen on the next restart.
+    Apply {
+        disk: PathBuf,
+        target: PathBuf,
+        /// Confirm that your data is backed up and you want to go ahead.
+        #[arg(long)]
+        yes: bool,
+        /// The static bootshift binary to run in the recovery system. Defaults to this one.
+        #[arg(long)]
+        init: Option<PathBuf>,
+    },
     /// Finish an interrupted run from a live USB, using the options saved on the ESP in
     /// EFI/bootshift/recovery-args.txt.
     Resume {
@@ -47,6 +58,12 @@ fn main() -> anyhow::Result<()> {
         } => inspect::probe(&disk, target_template),
         Command::Plan { disk, target } => inspect::plan(&disk, &target),
         Command::Check { disk, target } => inspect::check(&disk, &target),
+        Command::Apply {
+            disk,
+            target,
+            yes,
+            init,
+        } => inspect::apply(&disk, &target, yes, init),
         Command::Resume { disk, options } => recover::resume(&disk, &options),
     }
 }

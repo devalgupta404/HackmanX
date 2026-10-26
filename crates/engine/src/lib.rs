@@ -6,6 +6,7 @@ pub mod executor;
 pub mod facts;
 mod ntfs_boot;
 pub mod preflight;
+pub mod prepare;
 pub mod probe;
 pub mod recovery;
 pub mod run_plan;
