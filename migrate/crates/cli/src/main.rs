@@ -8,8 +8,11 @@ use clap::{Parser, Subcommand};
 
 mod common;
 mod finalize;
+mod mirror;
 mod receive;
 mod send;
+
+const DEFAULT_NQN: &str = "nqn.2026-10.org.bootshift:migrate";
 
 #[derive(Parser)]
 #[command(
@@ -89,6 +92,51 @@ enum Command {
         #[arg(long)]
         at: Option<String>,
     },
+    /// Mirror mode (receiver): export the target PV over nvme-tcp for the source to mirror onto.
+    MirrorExport {
+        #[arg(long)]
+        dev: PathBuf,
+        #[arg(long, default_value = "0.0.0.0")]
+        listen: String,
+        #[arg(long, default_value_t = 4420)]
+        port: u16,
+        #[arg(long, default_value = DEFAULT_NQN)]
+        nqn: String,
+    },
+    /// Mirror mode (sender): connect the target leg and mirror the LV onto it until it is in sync.
+    MirrorAttach {
+        #[arg(long)]
+        addr: String,
+        #[arg(long, default_value_t = 4420)]
+        port: u16,
+        #[arg(long, default_value = DEFAULT_NQN)]
+        nqn: String,
+        #[arg(long)]
+        vg: String,
+        #[arg(long)]
+        lv: String,
+    },
+    /// Mirror mode (sender): stand down after the source filesystem is frozen and unmounted.
+    MirrorStandDown {
+        #[arg(long)]
+        vg: String,
+        #[arg(long, default_value = DEFAULT_NQN)]
+        nqn: String,
+    },
+    /// Mirror mode (receiver): promote the synced leg to a standalone volume group.
+    MirrorPromote {
+        #[arg(long)]
+        vg: String,
+        #[arg(long)]
+        lv: String,
+    },
+    /// Mirror mode (receiver): remove the nvme-tcp export.
+    MirrorTeardown {
+        #[arg(long, default_value = DEFAULT_NQN)]
+        nqn: String,
+        #[arg(long, default_value_t = 4420)]
+        port: u16,
+    },
     /// Abandon the migration and leave the source running.
     Rollback,
     /// Background re-read of the preserved source against the receipt (A10).
@@ -149,6 +197,22 @@ fn main() -> anyhow::Result<()> {
             ),
             None => send::run(&source, &to, block_size, epoch),
         },
+        Command::MirrorExport {
+            dev,
+            listen,
+            port,
+            nqn,
+        } => mirror::export(&dev.to_string_lossy(), &listen, port, &nqn),
+        Command::MirrorAttach {
+            addr,
+            port,
+            nqn,
+            vg,
+            lv,
+        } => mirror::attach(&addr, port, &nqn, &vg, &lv),
+        Command::MirrorStandDown { vg, nqn } => mirror::stand_down(&vg, &nqn),
+        Command::MirrorPromote { vg, lv } => mirror::promote(&vg, &lv),
+        Command::MirrorTeardown { nqn, port } => mirror::teardown(&nqn, port),
         Command::Status => not_implemented("status"),
         Command::Rehearse { .. } => not_implemented("rehearse"),
         Command::Cutover { .. } => not_implemented("cutover"),
