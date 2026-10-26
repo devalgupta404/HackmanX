@@ -206,24 +206,24 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 3 — Core model and planner (pure logic, no I/O)
 
-- [ ] **3.1** `core::layout`: `Disk`, `Partition` and `Layout`.
-  - A `Partition` holds start and end, type GUID, unique GUID, name, attributes, `Content` kind and used bytes.
-  - Sectors and LBAs are newtypes (`Lba`, `Sectors`), so mixing up bytes and sectors is a compile error.
-- [ ] **3.2** `core::plan`: the `Operation` enum (`ShrinkFs`, `MovePartition`, `SetPartitionBounds`, `GrowFs`, `RecreateSwap`, `FixNtfsBootSector`) and `Plan` (ordered operations plus a bytes-to-copy estimate).
-- [ ] **3.3** `core::planner`: current + target layout → plan.
-  - Strategy ladder: grow in place → recreate swap → move used blocks (known filesystems) → opaque full copy (everything else).
-  - Pick the sequence that copies the fewest bytes.
-  - Never move the ESP. Prefer not to move the Windows recovery partition (D5). Move the Windows partition first.
-- [ ] **3.4** `core::validate`: refuse impossible or unsafe targets, each with a user-facing reason and a fix.
-  - ESP moved, overlap, outside the disk, misaligned.
-  - Shrink below the minimum size, XFS shrink.
-  - Resizing an opaque partition.
-- [ ] **3.5** Property tests (proptest): for random layouts and targets:
-  - every plan reaches the target;
-  - no two partitions overlap at any intermediate step;
-  - every move respects the direction and chunk rules;
-  - the bytes copied are ≤ the naive plan.
-  - Done when: 10k cases pass in < 30 s.
+- [x] **3.1** `core::layout` and `core::units`: `Geometry`, `Extent`, `Partition`, `Layout`, `Target`.
+  - A `Partition` holds its extent, type GUID, unique GUID, name, attributes, `Content` kind, used sectors and minimum size.
+  - Sectors and LBAs are newtypes (`Lba`, `Sectors`), so mixing up bytes and sectors is a compile error. Additions saturate, so absurd input fails bounds checks instead of wrapping.
+- [x] **3.2** `core::plan`: the `Operation` enum (`Shrink`, `Move`, `Grow`, `RemoveSwap`, `RecreateSwap`) and `Plan`, plus `Layout::apply`, which the executor also uses to know what the table holds after each operation.
+  - NTFS boot-sector fixes are part of executing a `Move` (Phase 7), not a separate operation.
+- [x] **3.3** `core::planner`: current + target layout → plan.
+  - Swaps that change are removed first and recreated last. Partitions shrink in place, then move, then grow in place.
+  - Moves that keep partition order never need parking and copy each partition once. Reordering parks a blocking partition in free space no target needs, or refuses if there is none.
+  - Windows (NTFS) partitions move first.
+  - D5 (avoid moving the recovery partition) belongs to the GUI, because the user's target decides where each partition goes.
+- [x] **3.4** `core::validate`: refuses impossible or unsafe targets, each with a plain reason and a fix.
+  - Missing or duplicate partitions, ESP or BitLocker changed, outside the usable area, misaligned start or end, overlap.
+  - Shrinking XFS or opaque contents, growing opaque contents, shrinking below the minimum size or when it couldn't be measured.
+- [x] **3.5** Property tests (`crates/core/tests/planner_properties.rs`): 10k random cases each, in about 1 s.
+  - Every plan replays cleanly, never overlaps, stays on the disk, and reaches the target.
+  - Order-preserving targets always plan, and copy each moved partition exactly once.
+  - The direction and chunk rules belong to the copier and are tested in Phase 5.
+  - Checked by mutation: breaking the planner's free-space check makes both properties fail.
 
 ### Phase 4 — Journal
 
