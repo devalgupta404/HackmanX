@@ -17,6 +17,9 @@ blake3 = "1.5"
 gptman = { version = "3.1", default-features = false }
 rustix = { version = "1", features = ["fs"] }
 tempfile = "3"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 proptest = "1.5"
 
 bootshift-core = { path = "crates/core" }
@@ -32,6 +35,8 @@ unsafe_code = "deny"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+# Lists of byte ranges are everywhere here, so one-element lists are intentional.
+single_range_in_vec_init = "allow"
 
 [profile.release]
 lto = true

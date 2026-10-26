@@ -1,0 +1,202 @@
+//! ext4 through e2fsprogs.
+
+use std::ops::Range;
+use std::path::Path;
+
+use crate::parse::{complement, field, number_field, unexpected};
+use crate::run::{CommandLine, RunError, Runner};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ext4Summary {
+    pub block_size: u64,
+    pub block_count: u64,
+    pub free_blocks: u64,
+    pub clean: bool,
+    /// The journal holds changes not yet written to the filesystem. Normal while mounted.
+    pub needs_recovery: bool,
+    pub error_count: u64,
+}
+
+impl Ext4Summary {
+    pub fn len_bytes(&self) -> u64 {
+        self.block_count * self.block_size
+    }
+}
+
+/// Reads the superblock summary. Safe while the filesystem is mounted.
+pub fn summary(runner: &dyn Runner, device: &Path) -> Result<Ext4Summary, RunError> {
+    let command = CommandLine::new("tune2fs").arg("-l").path(device);
+    let output = runner.run_ok(&command)?;
+    parse_summary(&output.text()).map_err(|detail| unexpected(&command, detail))
+}
+
+/// A full check that repairs what it safely can. Only valid on an unmounted filesystem.
+pub fn check(runner: &dyn Runner, device: &Path) -> Result<(), RunError> {
+    let command = CommandLine::new("e2fsck").arg("-f").arg("-p").path(device);
+    runner.run_expecting(&command, &[0, 1]).map(|_| ())
+}
+
+/// The smallest size the filesystem can shrink to, in bytes.
+pub fn min_size(runner: &dyn Runner, device: &Path, block_size: u64) -> Result<u64, RunError> {
+    let command = CommandLine::new("resize2fs").arg("-P").path(device);
+    let output = runner.run_ok(&command)?;
+    number_field(&output.text(), "Estimated minimum size of the filesystem")
+        .map(|blocks| blocks * block_size)
+        .map_err(|detail| unexpected(&command, detail))
+}
+
+/// Byte ranges holding data, relative to the start of the filesystem. Run on an unmounted,
+/// checked filesystem: the per-group free counts must add up to the superblock's.
+pub fn used_ranges(runner: &dyn Runner, device: &Path) -> Result<Vec<Range<u64>>, RunError> {
+    let command = CommandLine::new("dumpe2fs").path(device);
+    let output = runner.run_ok(&command)?;
+    parse_used_ranges(&output.text()).map_err(|detail| unexpected(&command, detail))
+}
+
+/// Resizes an unmounted filesystem to `size` bytes. Never call this on a real partition
+/// outside a guarded run: `resize2fs` can't survive a power cut on its own.
+pub fn resize_offline(runner: &dyn Runner, device: &Path, size: u64) -> Result<(), RunError> {
+    let command = CommandLine::new("resize2fs")
+        .path(device)
+        .arg(format!("{}K", size / 1024));
+    runner.run_ok(&command).map(|_| ())
+}
+
+/// Grows a mounted filesystem to fill its partition. The kernel journals an online grow.
+pub fn grow_online(runner: &dyn Runner, device: &Path) -> Result<(), RunError> {
+    runner
+        .run_ok(&CommandLine::new("resize2fs").path(device))
+        .map(|_| ())
+}
+
+pub fn parse_summary(text: &str) -> Result<Ext4Summary, String> {
+    let state = field(text, "Filesystem state").ok_or("missing \"Filesystem state\"")?;
+    let features = field(text, "Filesystem features").unwrap_or_default();
+    let error_count = match field(text, "FS Error count") {
+        Some(_) => number_field(text, "FS Error count")?,
+        None => 0,
+    };
+    Ok(Ext4Summary {
+        block_size: number_field(text, "Block size")?,
+        block_count: number_field(text, "Block count")?,
+        free_blocks: number_field(text, "Free blocks")?,
+        clean: state == "clean",
+        needs_recovery: features.split_whitespace().any(|f| f == "needs_recovery"),
+        error_count,
+    })
+}
+
+pub fn parse_used_ranges(dumpe2fs: &str) -> Result<Vec<Range<u64>>, String> {
+    let summary = parse_summary(dumpe2fs)?;
+    let mut free = Vec::new();
+    for line in dumpe2fs.lines() {
+        let Some(list) = line.strip_prefix("  Free blocks:") else {
+            continue;
+        };
+        for item in list
+            .split(',')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+        {
+            free.push(parse_block_range(item)?);
+        }
+    }
+
+    let free_count: u64 = free.iter().map(|r| r.end - r.start).sum();
+    if free_count != summary.free_blocks {
+        return Err(format!(
+            "groups list {free_count} free blocks but the superblock says {}",
+            summary.free_blocks
+        ));
+    }
+    Ok(complement(free, summary.block_count)
+        .into_iter()
+        .map(|r| r.start * summary.block_size..r.end * summary.block_size)
+        .collect())
+}
+
+/// Parses `12` or `12-40` (inclusive) into a half-open block range.
+fn parse_block_range(item: &str) -> Result<Range<u64>, String> {
+    let parse = |s: &str| {
+        s.parse::<u64>()
+            .map_err(|_| format!("bad block number in \"{item}\""))
+    };
+    match item.split_once('-') {
+        Some((first, last)) => Ok(parse(first)?..parse(last)? + 1),
+        None => {
+            let block = parse(item)?;
+            Ok(block..block + 1)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DUMPE2FS: &str = include_str!("../tests/fixtures/ext4/dumpe2fs.txt");
+    const TUNE2FS: &str = include_str!("../tests/fixtures/ext4/tune2fs-l.txt");
+
+    #[test]
+    fn parses_the_superblock_summary() {
+        let summary = parse_summary(TUNE2FS).unwrap();
+        assert_eq!(
+            summary,
+            Ext4Summary {
+                block_size: 4096,
+                block_count: 102_400,
+                free_blocks: 87_129,
+                clean: true,
+                needs_recovery: false,
+                error_count: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn used_ranges_are_the_complement_of_the_free_lists() {
+        let used = parse_used_ranges(DUMPE2FS).unwrap();
+        let block = 4096;
+        assert_eq!(
+            used,
+            vec![
+                0..11_073 * block,
+                32_768 * block..32_819 * block,
+                65_536 * block..69_632 * block,
+                98_304 * block..98_355 * block,
+            ]
+        );
+    }
+
+    #[test]
+    fn refuses_free_lists_that_disagree_with_the_superblock() {
+        let tampered = DUMPE2FS.replace("Free blocks: 69632-98303", "Free blocks: 69632-98300");
+        assert!(
+            parse_used_ranges(&tampered)
+                .unwrap_err()
+                .contains("superblock")
+        );
+    }
+
+    #[test]
+    fn reads_single_blocks_and_ranges() {
+        assert_eq!(parse_block_range("7").unwrap(), 7..8);
+        assert_eq!(parse_block_range("7-9").unwrap(), 7..10);
+        assert!(parse_block_range("7-x").is_err());
+    }
+
+    #[test]
+    fn reports_errors_and_dirty_state() {
+        let text = TUNE2FS
+            .replace(
+                "Filesystem state:         clean",
+                "Filesystem state:         not clean",
+            )
+            .replace("metadata_csum", "metadata_csum needs_recovery")
+            + "FS Error count:           3\n";
+        let summary = parse_summary(&text).unwrap();
+        assert!(!summary.clean);
+        assert!(summary.needs_recovery);
+        assert_eq!(summary.error_count, 3);
+    }
+}
