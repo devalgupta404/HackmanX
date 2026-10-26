@@ -268,15 +268,15 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 - [x] **6.1** `disk::GptImage`: the two GPT regions held in memory and edited with `gptman` through a sparse whole-disk view.
   - `read` falls back to the backup copy when the primary is damaged.
   - `with_partitions(layout, removable)` keeps every partition's slot, GUIDs, type, name and attributes. It refuses to drop an entry the layout doesn't describe unless it is listed as removable (a swap being recreated). Recreated entries return to their own slot.
-  - `write_over(device, previous)` writes only the sectors that differ from the table it was derived from: backup copy, flush, primary copy, flush. The protective MBR is never rewritten.
-  - The journal will keep the original image, so a resume rebuilds the same target from the same base.
+  - `write(device)` writes only the table's own sectors: backup copy, flush, primary entries and header, flush. The protective MBR and the gap before the first partition are never written.
+  - Resume needs no stored table. Rebuilding the same layout from whichever copy a crash left valid (old or new) gives the same table, so the write is simply redone.
 - [x] **6.2** `disk::RealDevice` and the kernel refresh.
   - [x] The device: `O_DIRECT` through an aligned bounce buffer (no `unsafe`), `fdatasync`, BLKSSZGET via `rustix`, size from seeking to the end.
     - Writable block devices are opened `O_EXCL`, so the kernel refuses a disk with a mounted partition.
     - Tested on image files, including the copier and journal end to end (`crates/engine/tests/copier_real_device.rs`).
   - [x] `fs::kernel::refresh_partitions`: `partx --update`, which uses BLKPG per partition. BLKRRPART is never used.
 - [x] **6.3** Crash tests (`crates/disk/tests/gpt.rs`).
-  - Every crash point × lost / landed / 32 scrambled outcomes: the table always reads as the old or the new one, and rewriting from the original finishes with both copies holding the target.
+  - Every crash point × lost / landed / 32 scrambled outcomes: the table always reads as the old or the new one. Rebuilding from the surviving copy and writing finishes with both copies holding the target and the MBR untouched.
   - Also tested: identity kept, MBR untouched, undescribed partitions refused, slot changes refused, overlap refused, swap removed and recreated in its slot.
   - Mutation-checked: dropping the flush between the copies fails the crash test.
 - [ ] **6.4** User backup: `sfdisk -d` text + raw table sectors (`sfdisk --backup-pt-sectors`), saved to the ESP before the restart and offered in the GUI as a download.
