@@ -4,7 +4,7 @@
 use bootshift_core::units::{Sectors, format_bytes};
 use eframe::egui::{Pos2, Rect, Sense, Ui, Vec2};
 
-use crate::app::{App, Screen};
+use crate::app::{App, Goal, Screen};
 use crate::editing::min_len;
 use crate::format::{rough_time, short_name, size, thousands};
 use crate::theme::{self, Face, Weight};
@@ -17,7 +17,10 @@ pub fn show(ui: &mut Ui, app: &App) {
     ui.spacing_mut().item_spacing = Vec2::ZERO;
     match app.screen {
         Screen::Home => home(ui, app),
-        Screen::Arrange => arrange(ui, app),
+        Screen::Arrange => match app.goal {
+            Some(goal) if goal != Goal::DoItMyself => goal_readout(ui, app, goal),
+            _ => arrange(ui, app),
+        },
         Screen::Plan => plan(ui, app),
         Screen::Checks => checks(ui, app),
         Screen::Restart => restart(ui),
@@ -153,6 +156,100 @@ fn arrange(ui: &mut Ui, app: &App) {
                 changed(moves),
             ),
             ("Data to copy", copy, changed(moves)),
+        ],
+    );
+}
+
+/// The readout for a simplified goal screen: plain before-and-after, no sector positions.
+fn goal_readout(ui: &mut Ui, app: &App, goal: Goal) {
+    let Some(probed) = &app.probed else {
+        readout_heading(ui, "Disk");
+        readout_text(ui, "Reading the disk…");
+        return;
+    };
+    let layout = &probed.layout;
+    readout_heading(ui, "Your change");
+    let Some(guid) = app.goal_partition else {
+        readout_text(ui, "Pick a partition on the left, then choose how much.");
+        return;
+    };
+    let Some(partition) = layout.partition(guid) else {
+        return;
+    };
+    let before = partition.extent;
+    let after = app.target.get(&guid).copied().unwrap_or(before);
+    partition_title(
+        ui,
+        theme::content_colour(partition.content),
+        &short_name(partition),
+    );
+    let changed = |differs: bool| if differs { Tone::Changed } else { Tone::Plain };
+
+    if after == before && goal != Goal::MovePartition {
+        readout_text(ui, "Choose how much on the left and this fills in.");
+    } else {
+        match goal {
+            Goal::GiveSpace => {
+                let grew = after.len.0.saturating_sub(before.len.0);
+                facts(
+                    ui,
+                    &[
+                        ("Size now", size(layout, before.len), Tone::Plain),
+                        ("Size after", size(layout, after.len), changed(grew > 0)),
+                        ("Bigger by", size(layout, Sectors(grew)), changed(grew > 0)),
+                    ],
+                );
+            }
+            Goal::FreeSpace | Goal::InstallOs => {
+                let freed = before.len.0.saturating_sub(after.len.0);
+                let freed_label = if goal == Goal::InstallOs {
+                    "Room for the new OS"
+                } else {
+                    "Freed up"
+                };
+                facts(
+                    ui,
+                    &[
+                        ("Size now", size(layout, before.len), Tone::Plain),
+                        ("Size after", size(layout, after.len), changed(freed > 0)),
+                        (
+                            freed_label,
+                            size(layout, Sectors(freed)),
+                            changed(freed > 0),
+                        ),
+                    ],
+                );
+            }
+            Goal::MovePartition => {
+                let moves = after.start != before.start;
+                let toward = if app.goal_move_left {
+                    "toward the start"
+                } else {
+                    "toward the end"
+                };
+                facts(
+                    ui,
+                    &[
+                        ("Size", size(layout, before.len), Tone::Plain),
+                        ("Moving", toward.to_string(), changed(moves)),
+                        (
+                            "Data to copy",
+                            size(layout, partition.used.min(after.len)),
+                            changed(moves),
+                        ),
+                    ],
+                );
+            }
+            Goal::CleanUp | Goal::DoItMyself => {}
+        }
+    }
+    block_gap(ui);
+    readout_heading(ui, "What protects you");
+    readout_texts(
+        ui,
+        &[
+            "Nothing is written until you have seen the plan and every safety check passes.",
+            "Data is copied and verified in its new place before the partition table changes, so a power cut can't lose it.",
         ],
     );
 }
