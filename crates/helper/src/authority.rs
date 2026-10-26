@@ -25,7 +25,7 @@ pub async fn require(
             &subject,
             action,
             &HashMap::new(),
-            CheckAuthorizationFlags::AllowUserInteraction.into(),
+            CheckAuthorizationFlags::ALLOW_USER_INTERACTION,
             "",
         )
         .await?;
