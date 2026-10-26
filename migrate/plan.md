@@ -226,7 +226,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 - [x] **2.3 `FaultyLink`.** An in-memory transport that can drop, delay, duplicate or cut frames, and reconnect.
 - [x] **2.4 Two-sided crash harness.** Receiver on `CrashDisk`: crash at every write or flush point × resume × link cut at every frame.
   **Done when** the harness runs a 64 MiB migration exhaustively in under 2 min.
-- [ ] **2.5 Two-VM QEMU rig** in `xtask` (`cargo xtask migrate-vm-test`): a source VM running fio and Postgres, a target VM booted into the receiver, a switch, and kill-QEMU on either side.
+- [x] **2.5 Two-VM QEMU rig** in `xtask` (`cargo xtask migrate-vm-test`): a source VM running fio and Postgres, a target VM booted into the receiver, a switch, and kill-QEMU on either side.
 
 ### Phase 3 — Pure logic (`migrate-core`)
 
@@ -250,26 +250,26 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 ### Phase 5 — Sender
 
 - [ ] **5.1 Source probe and preflight** (§A3), refusals with reason and fix.
-- [ ] **5.2 Bulk reader.** Used ranges only, via the `bootshift-fs` adapters; always the first and last MiB of each partition. Reads are chunked and pipelined.
+- [x] **5.2 Bulk reader.** Used ranges only, via the `bootshift-fs` adapters; always the first and last MiB of each partition. Reads are chunked and pipelined.
 - [x] **5.3 Compare pass.** Hash source chunks, compare with the index, send mismatches.
-- [ ] **5.4 Resend on reconnect.** Every unacknowledged range is marked dirty again.
+- [x] **5.4 Resend on reconnect.** Every unacknowledged range is marked dirty again.
 
 ### Phase 6 — Tracking and convergence
 
-- [ ] **6.1 eBPF tracker backend** (§A5.1), with drop, detach and passthrough detection and generation-flip draining.
-- [ ] **6.2 Compare-only backend** (fallback when nothing else is available).
-- [ ] **6.3 Pass loop** driven by the convergence model.
+- [x] **6.1 eBPF tracker backend** (§A5.1), with drop, detach and passthrough detection and generation-flip draining.
+- [x] **6.2 Compare-only backend** (fallback when nothing else is available).
+- [x] **6.3 Pass loop** driven by the convergence model.
 - [ ] **6.4 Throttle step.** cgroup v2 `io.max` on the busiest writers, only with consent and with a configured ceiling.
 - [ ] **6.5 Downtime forecast** in the CLI and GUI: "ready: predicted data downtime 2.1 s".
 
 ### Phase 7 — Cutover
 
-- [ ] **7.1 Quiesce.**
+- [x] **7.1 Quiesce.**
   - Run app hooks.
   - Swap off.
   - `FIFREEZE` every filesystem, deepest mount first.
   - Confirm no write after the freeze; the watchdog thaws if this doesn't finish in time.
-- [ ] **7.2 Final pass, final verify, receipt, `Committed` on both sides.**
+- [x] **7.2 Final pass, final verify, receipt, `Committed` on both sides.**
 - [ ] **7.3 Rollback:** a recorded `RolledBack` on the target, then a thaw on the source.
 
 ### Phase 8 — Target finalize
