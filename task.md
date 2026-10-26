@@ -283,30 +283,36 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 7 — Filesystem adapters (shelling out, behind one runner)
 
-- [ ] **7.1** `fs::run`: one wrapper around `std::process::Command`. It logs the command line, captures stdout and stderr, maps exit codes to typed errors, and never invokes a shell.
+- [x] **7.1** `fs::run`: the `Runner` trait, with `SystemRunner` and `ScriptedRunner` (recorded replies, for tests).
+  - Logs every command, never uses a shell, sets `LC_ALL=C` and closes stdin.
+  - Stdout is kept as bytes, because `ntfscat` prints binary.
+  - Closing stdin matters: `ntfsresize` treats end-of-input at its confirmation prompt as "yes". The adapters pass `--force` explicitly anyway.
 - [ ] **7.2** `fs::probe`: parse `lsblk -J -b -O` and `blkid -p -o export` into `core::layout`.
   - Detects BitLocker, LUKS, LVM, RAID, XFS and USB transport.
   - Unit tests use captured JSON from real machines.
 - [ ] **7.3** `fs::guard`: guarded runs, using the design chosen in 0.6. Durable undo log, rollback, rerun.
   - Crash tests use CrashDisk (unit) and dm-log-writes (VM).
-- [ ] **7.4** `fs::ext4`.
-  - Read-only state check (`tune2fs -l`); `e2fsck -f -p` in recovery only.
-  - Minimum size from `resize2fs -P` plus a margin.
-  - Used ranges from the free-block lines of `dumpe2fs`.
-  - Shrink with `resize2fs` inside a guarded run; online grow after the restart.
-- [ ] **7.5** `fs::ntfs`.
-  - `ntfsresize --check --no-action`; hibernation and Fast Startup detection.
-  - Used ranges from `ntfscat -i 6`.
-  - Shrink and grow with `ntfsresize` inside a guarded run.
-  - Fix boot sector `0x1C` and the backup boot sector.
+- [~] **7.4** (adapter done; the guarded wrapping waits on 7.3) `fs::ext4`.
+  - `summary` (`tune2fs -l`: state, errors, size), `check` (`e2fsck -f -p`, exit 0/1 only), `min_size` (`resize2fs -P`).
+  - `used_ranges` from `dumpe2fs` free lists. Refused unless the per-group free counts add up to the superblock's.
+  - `resize_offline` (to be called only inside a guarded run) and `grow_online` (run mounted in recovery, after the move).
+- [~] **7.5** (adapter done; guarded wrapping waits on 7.3; boot-sector fix belongs to the executor) `fs::ntfs`.
+  - `info` (`ntfsresize --info --no-action`: cluster size, volume size, minimum size). It fails on hibernated or dirty volumes.
+  - `used_ranges` from `$Bitmap` (`ntfscat -i 6`). Refused if the bitmap is shorter than the volume.
+  - `resize_offline` (shrink, or grow to fill the partition).
+  - `DirtyMark`: `ntfsresize` always marks the volume for checking, so after BootShift's own resize the mark is expected and `--force` is passed. A volume found dirty is refused.
+  - The boot sector `0x1C` and backup boot-sector fix is a raw write, done in the executor's move step.
 - [ ] **7.6** `fs::btrfs`: mount in recovery; `btrfs filesystem resize <size>` before a move, `max` after. Used ranges from the dev-extent tree.
 - [ ] **7.7** `fs::xfs`: move, then `xfs_growfs` online after the restart. Used ranges from `xfs_db -r` free-space data, cross-checked against a full copy.
 - [ ] **7.8** `fs::swap`: hibernation-signature check; recreate with the same UUID and label.
 - [ ] **7.9** `fs::opaque`: full byte-for-byte move with no resize, for LVM PV, LUKS, FAT data and unknown contents.
-- [ ] **7.10** VM tests for each adapter on fixture images:
-  - used ranges ⊇ what `e2image`/`ntfsclone`/`partclone` would copy;
-  - grow and shrink, then fsck is clean;
-  - every fixture file hash is intact.
+- [~] **7.10** Adapter tests against the real tools.
+  - Most adapters work on plain image files, so no root or VM is needed (`crates/fs/tests/{ext4,ntfs}_tools.rs`). CI installs `e2fsprogs` and `ntfs-3g`.
+  - ext4: used ranges cover every file block (`debugfs blocks`); an offline shrink keeps every file byte-identical and `e2fsck`-clean.
+  - NTFS: files go in with `ntfscp`, then shrink and grow keep them byte-identical (`ntfscat`); a dirty volume is refused unless BootShift marked it.
+  - End to end (`crates/engine/tests/move_real_filesystems.rs`): real ext4 and NTFS filesystems moved by the copier using only their used ranges, including power cuts mid-move and an `O_DIRECT` image-file run. They check clean and every file reads back unchanged.
+    - Mutation-checked: dropping half the used ranges fails.
+  - Still needs the VM: mounting (Btrfs, XFS, online ext4 grow), loop devices, and dm-dust.
 
 ### Phase 8 — Executor (the eight steps)
 
