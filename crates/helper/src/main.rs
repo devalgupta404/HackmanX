@@ -113,7 +113,11 @@ fn apply(
 ) -> Result<responses::Applied, ServiceError> {
     let inspected = service::inspect(&SystemRunner, Path::new(disk))?;
     let plan = service::plan_target(&inspected.layout, &responses::parse_target(target)?)?;
-    let work_dir = std::env::temp_dir().join("bootshiftd");
+    // Unique per call: a fixed name would collide across concurrent applies and leave a
+    // crashed run's initramfs artifacts in the next run's way.
+    static APPLY_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let call = APPLY_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let work_dir = std::env::temp_dir().join(format!("bootshiftd-{}-{call}", std::process::id()));
     let _ = std::fs::create_dir_all(&work_dir);
     let result = service::apply(
         &SystemRunner,
