@@ -91,6 +91,11 @@ pub enum Message {
     FinalRoot {
         root: [u8; 32],
     },
+    /// The receiver's signed proof that the target equals the source (USP U1), sent back after it
+    /// has the source's root and has computed its own.
+    Receipt {
+        receipt: crate::receipt::Receipt,
+    },
     Commit {
         epoch: u64,
         source_root: [u8; 32],

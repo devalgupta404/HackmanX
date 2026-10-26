@@ -98,6 +98,12 @@ impl Receipt {
         self.signature = Some(key.sign(&digest).to_bytes().to_vec());
     }
 
+    /// Signs with an ed25519 key derived from a 32-byte seed, so a caller can sign without depending
+    /// on the ed25519 crate. A real receiver uses a persistent identity key here.
+    pub fn sign_with_seed(&mut self, seed: &[u8; 32]) {
+        self.sign(&SigningKey::from_bytes(seed));
+    }
+
     /// Whether the signature is present, from `receiver_key`, and over this receipt's digest.
     pub fn verify(&self) -> bool {
         let Some(bytes) = self.signature.as_ref() else {
@@ -182,9 +188,7 @@ mod tests {
         let mut receipt = sample(root, root);
         receipt.sign(&key());
         // Swap in a different public key but keep the old signature.
-        receipt.receiver_key = SigningKey::from_bytes(&[7u8; 32])
-            .verifying_key()
-            .to_bytes();
+        receipt.receiver_key = SigningKey::from_bytes(&[7u8; 32]).verifying_key().to_bytes();
         assert!(!receipt.verify());
     }
 

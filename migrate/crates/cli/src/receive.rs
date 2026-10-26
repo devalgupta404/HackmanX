@@ -10,15 +10,18 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use bootshift_disk::{Access, BlockDevice, RealDevice};
 use bootshift_migrate_core::{
-    DiskRange, Epoch, FrameSeq, LayoutMap, Message, PROTOCOL_VERSION, Role, decode, encode,
+    DiskRange, Epoch, FrameSeq, LayoutMap, Message, PROTOCOL_VERSION, Receipt, Role, decode, encode,
 };
 use bootshift_migrate_net::{Link, LinkError, TcpLink};
 use bootshift_migrate_receive::{Applier, IncomingChunk, Store};
 
-use crate::common::open_device;
+use crate::common::{RECEIPT_CHUNK, device_root, now_iso, open_device};
 
 /// Apply once this many chunk bytes have gathered, or at the end of a pass.
 const BATCH_BYTES: usize = 16 << 20;
+
+/// The receiver's demo signing key seed. A real receiver uses a persistent identity key.
+const RECEIVER_KEY_SEED: [u8; 32] = [0x5a; 32];
 
 pub fn run(
     data: &Path,
@@ -49,12 +52,14 @@ pub fn run(
 
     let mut batch: Vec<IncomingChunk> = Vec::new();
     let mut batch_bytes = 0usize;
+    let mut source_len = data_len;
     loop {
         match link.recv() {
             Ok(Some(frame)) => {
                 let (_, seq, message) = decode(&frame).context("decoding a frame")?;
                 match message {
-                    Message::Hello { .. } => {
+                    Message::Hello { disk_len, .. } => {
+                        source_len = disk_len;
                         link.send(encode(epoch, FrameSeq(0), &Message::Hello {
                             protocol: PROTOCOL_VERSION,
                             role: Role::Receiver,
@@ -86,6 +91,33 @@ pub fn run(
                         println!(
                             "receive: pass complete, acknowledged through seq {}",
                             applier.acked().0
+                        );
+                    }
+                    Message::FinalRoot { root: source_root } => {
+                        // Flush anything pending, then prove byte-equality with a signed receipt.
+                        apply(&mut applier, &mut scratch_dev, &mut target, &mut batch, &mut link, epoch)?;
+                        batch_bytes = 0;
+                        let target_root = device_root(&target, data_len)
+                            .context("computing the target root for the receipt")?;
+                        let now = now_iso();
+                        let mut receipt = Receipt::new(
+                            format!("run-{run_id}"),
+                            epoch.0,
+                            source_len,
+                            data_len,
+                            RECEIPT_CHUNK as u32,
+                            source_root,
+                            target_root,
+                            now.clone(),
+                            now,
+                            0,
+                        );
+                        receipt.sign_with_seed(&RECEIVER_KEY_SEED);
+                        let matched = receipt.roots_match();
+                        link.send(encode(epoch, FrameSeq(0), &Message::Receipt { receipt })?);
+                        println!(
+                            "receive: sent signed receipt (roots {})",
+                            if matched { "match" } else { "DIFFER" }
                         );
                     }
                     Message::Committed { .. } => {

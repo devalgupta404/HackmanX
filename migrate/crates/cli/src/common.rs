@@ -2,12 +2,16 @@
 
 use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
+use std::process::Command;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
-use bootshift_disk::{Access, RealDevice};
-use bootshift_migrate_core::{Epoch, FrameSeq, Message, decode};
+use bootshift_disk::{Access, BlockDevice, RealDevice};
+use bootshift_migrate_core::{Epoch, FrameSeq, Message, decode, merkle_root};
 use bootshift_migrate_net::{Link, LinkError, TcpLink};
+
+/// The chunk size the receipt's Merkle tree is built over (1 MiB), matching the receiver's index.
+pub const RECEIPT_CHUNK: u64 = 1 << 20;
 
 /// Opens `path` as a block device (block size from the kernel) or, if it is a regular file, as a
 /// disk image with `block_size`-byte blocks. The source is only ever opened read-only (M1).
@@ -41,4 +45,64 @@ pub fn recv_message(
             Err(LinkError::Cut) => bail!("the link cut while waiting for the peer"),
         }
     }
+}
+
+/// The blake3 Merkle root over a device's 1 MiB chunks: the leaf set a receipt proves equal on both
+/// sides. The sender runs it over the source, the receiver over the target.
+pub fn device_root(device: &dyn BlockDevice, len: u64) -> Result<[u8; 32]> {
+    let chunks = len.div_ceil(RECEIPT_CHUNK);
+    let mut leaves = Vec::with_capacity(chunks as usize);
+    let mut buf = vec![0u8; RECEIPT_CHUNK as usize];
+    for index in 0..chunks {
+        let start = index * RECEIPT_CHUNK;
+        let end = ((index + 1) * RECEIPT_CHUNK).min(len);
+        let slice = &mut buf[..(end - start) as usize];
+        device
+            .read_at(start, slice)
+            .with_context(|| format!("reading chunk at {start} for the receipt root"))?;
+        leaves.push(*blake3::hash(slice).as_bytes());
+    }
+    Ok(merkle_root(&leaves))
+}
+
+/// An ISO-8601 UTC timestamp for the receipt, from `date -u`, or a unix-seconds fallback.
+pub fn now_iso() -> String {
+    Command::new("date")
+        .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| {
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            format!("unix:{secs}")
+        })
+}
+
+/// Freezes a mounted filesystem so the final pass reads a consistent, unchanging image (M6).
+#[cfg(feature = "ebpf")]
+pub fn freeze(mountpoint: &str) -> Result<()> {
+    run_quiesce("--freeze", mountpoint)
+}
+
+/// Thaws a frozen filesystem. Safe to call even if it was never frozen.
+#[cfg(feature = "ebpf")]
+pub fn thaw(mountpoint: &str) -> Result<()> {
+    run_quiesce("--unfreeze", mountpoint)
+}
+
+#[cfg(feature = "ebpf")]
+fn run_quiesce(flag: &str, mountpoint: &str) -> Result<()> {
+    let status = Command::new("fsfreeze")
+        .arg(flag)
+        .arg(mountpoint)
+        .status()
+        .with_context(|| format!("running fsfreeze {flag} {mountpoint}"))?;
+    if !status.success() {
+        bail!("fsfreeze {flag} {mountpoint} failed with {status}");
+    }
+    Ok(())
 }

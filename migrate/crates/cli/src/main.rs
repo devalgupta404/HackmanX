@@ -59,6 +59,17 @@ enum Command {
         /// Migration epoch (must match the receiver).
         #[arg(long, default_value_t = 1)]
         epoch: u64,
+        /// Track live changes on this block device with eBPF and migrate live: a bulk pass, then
+        /// delta passes until a cutover is cheap, then freeze and a signed receipt. Needs the
+        /// `ebpf` build feature and root.
+        #[arg(long)]
+        track: Option<PathBuf>,
+        /// Freeze this mounted filesystem for the final pass (recommended with --track).
+        #[arg(long)]
+        freeze: Option<String>,
+        /// Data-downtime budget in milliseconds for the cutover gate (with --track).
+        #[arg(long, default_value_t = 5000)]
+        budget_ms: u64,
     },
     /// Show the passes, churn, forecast and state on both sides.
     Status,
@@ -113,7 +124,21 @@ fn main() -> anyhow::Result<()> {
             to,
             block_size,
             epoch,
-        } => send::run(&source, &to, block_size, epoch),
+            track,
+            freeze,
+            budget_ms,
+        } => match track {
+            Some(track_dev) => run_tracked(
+                &source,
+                &track_dev,
+                &to,
+                block_size,
+                epoch,
+                budget_ms,
+                freeze.as_deref(),
+            ),
+            None => send::run(&source, &to, block_size, epoch),
+        },
         Command::Status => not_implemented("status"),
         Command::Rehearse { .. } => not_implemented("rehearse"),
         Command::Cutover { .. } => not_implemented("cutover"),
@@ -122,6 +147,32 @@ fn main() -> anyhow::Result<()> {
         Command::VerifyReceipt { .. } => not_implemented("verify-receipt"),
         Command::Finalize { .. } => not_implemented("finalize"),
     }
+}
+
+#[cfg(feature = "ebpf")]
+fn run_tracked(
+    source: &std::path::Path,
+    track_dev: &std::path::Path,
+    to: &str,
+    block_size: u32,
+    epoch: u64,
+    budget_ms: u64,
+    freeze: Option<&str>,
+) -> anyhow::Result<()> {
+    send::run_live(source, track_dev, to, block_size, epoch, budget_ms, freeze)
+}
+
+#[cfg(not(feature = "ebpf"))]
+fn run_tracked(
+    _source: &std::path::Path,
+    _track_dev: &std::path::Path,
+    _to: &str,
+    _block_size: u32,
+    _epoch: u64,
+    _budget_ms: u64,
+    _freeze: Option<&str>,
+) -> anyhow::Result<()> {
+    anyhow::bail!("live tracked migration needs the eBPF tracker; rebuild with --features ebpf")
 }
 
 fn not_implemented(name: &str) -> anyhow::Result<()> {

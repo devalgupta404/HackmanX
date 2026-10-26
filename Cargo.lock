@@ -441,6 +441,7 @@ dependencies = [
  "bootshift-migrate-core",
  "bootshift-migrate-net",
  "bootshift-migrate-receive",
+ "bootshift-migrate-track",
  "clap",
 ]
 

@@ -14,6 +14,10 @@ workspace = true
 name = "bootshift-migrate"
 path = "src/main.rs"
 
+[features]
+# Enables the live tracker-driven migration (send --track), which needs the eBPF tracker.
+ebpf = ["bootshift-migrate-track/ebpf"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
@@ -22,3 +26,4 @@ bootshift-disk.workspace = true
 bootshift-migrate-core = { path = "../core" }
 bootshift-migrate-net = { path = "../net" }
 bootshift-migrate-receive = { path = "../receive" }
+bootshift-migrate-track = { path = "../track" }
