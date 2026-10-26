@@ -6,6 +6,8 @@
 //! This is normal library code, like `bootshift-disk`'s `MemDisk`/`CrashDisk`, so any crate can
 //! use it as a dev-dependency.
 
+pub mod crash;
 pub mod live_disk;
 
+pub use crash::{CrashBudget, CrashDevice};
 pub use live_disk::LiveDisk;

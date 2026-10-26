@@ -224,7 +224,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
   **Done when** a seed reproduces the exact same history.
 - [x] **2.2 `SimTracker`.** A tracker fed from `LiveDisk`'s log, with injectable faults: drop, delay, detach.
 - [x] **2.3 `FaultyLink`.** An in-memory transport that can drop, delay, duplicate or cut frames, and reconnect.
-- [ ] **2.4 Two-sided crash harness.** Receiver on `CrashDisk`: crash at every write or flush point × resume × link cut at every frame.
+- [x] **2.4 Two-sided crash harness.** Receiver on `CrashDisk`: crash at every write or flush point × resume × link cut at every frame.
   **Done when** the harness runs a 64 MiB migration exhaustively in under 2 min.
 - [ ] **2.5 Two-VM QEMU rig** in `xtask` (`cargo xtask migrate-vm-test`): a source VM running fio and Postgres, a target VM booted into the receiver, a switch, and kill-QEMU on either side.
 
@@ -243,7 +243,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 ### Phase 4 — Receiver
 
 - [x] **4.1 Journal and hash-index store** on the scratch device (format in `implementation.md` §I4). Includes the decode-old-version test rule.
-- [ ] **4.2 Applier.** Batch write → `fdatasync` → read back with `O_DIRECT` → compare hashes → index entries → flush → journal → acknowledge.
+- [x] **4.2 Applier.** Batch write → `fdatasync` → read back with `O_DIRECT` → compare hashes → index entries → flush → journal → acknowledge.
   **Done when** the CrashDisk test covers every write and flush point with dropped, reordered and torn pending writes, and the final target equals the source at freeze.
 - [ ] **4.3 Index service.** Stream the hash index to the sender for compare passes.
 

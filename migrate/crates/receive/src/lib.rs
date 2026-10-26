@@ -6,6 +6,8 @@
 //! Built out in plan.md Phases 4 and 8. The store (§I4) is here; the applier and finalize land on
 //! top of it.
 
+pub mod apply;
 pub mod store;
 
+pub use apply::{Applier, ApplyError, IncomingChunk};
 pub use store::{Slot, Store, StoreError};
