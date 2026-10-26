@@ -458,6 +458,8 @@ dependencies = [
 name = "bootshift-migrate-net"
 version = "0.1.0"
 dependencies = [
+ "blake3",
+ "bootshift-migrate-core",
  "thiserror 2.0.21",
 ]
 

@@ -6,5 +6,7 @@
 //! trait, so every test written against `FaultyLink` holds for it unchanged.
 
 pub mod link;
+pub mod tcp;
 
 pub use link::{Control, Endpoint, Fault, FaultyLink, Frame, Link, LinkError, Side};
+pub use tcp::TcpLink;

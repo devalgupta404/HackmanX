@@ -18,6 +18,9 @@ pub use converge::{Advice, ConvergenceModel, PassKind, PassStats};
 pub use cutover::{Fence, ReceiverState, SenderState};
 pub use dirty::DirtySet;
 pub use layout::{LayoutError, LayoutMap};
-pub use proto::{Codec, CodecError, Message, Mode, PROTOCOL_VERSION, Role, decode, encode};
+pub use proto::{
+    Codec, CodecError, MAX_FRAME, Message, Mode, PROTOCOL_VERSION, Role, decode, encode,
+    frame_total_len,
+};
 pub use receipt::{Receipt, merkle_root};
 pub use units::{DiskRange, Epoch, FrameSeq, MAX_EXTENT, TRACK_BLOCK};

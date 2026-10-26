@@ -140,6 +140,22 @@ const LEN_BYTES: usize = 4;
 const HEADER_BYTES: usize = 8 + 8; // epoch + seq
 const CRC_BYTES: usize = 4;
 
+/// The largest whole frame on the wire: length prefix + header + body + CRC. A streaming transport
+/// rejects any declared length past this before allocating for it.
+pub const MAX_FRAME: usize = LEN_BYTES + HEADER_BYTES + MAX_BODY + CRC_BYTES;
+
+/// Given at least the first [`LEN_BYTES`] of a frame, the total number of bytes the whole frame
+/// occupies on the wire (length prefix + header + body + CRC), or `None` if fewer bytes are in
+/// hand. A streaming transport (TCP) uses this to split a byte stream back into frames; it does not
+/// validate the frame, which [`decode`] does.
+pub fn frame_total_len(prefix: &[u8]) -> Option<usize> {
+    if prefix.len() < LEN_BYTES {
+        return None;
+    }
+    let inner = u32::from_le_bytes([prefix[0], prefix[1], prefix[2], prefix[3]]) as usize;
+    Some(LEN_BYTES + inner + CRC_BYTES)
+}
+
 /// Encodes a message into one frame.
 pub fn encode(epoch: Epoch, seq: FrameSeq, message: &Message) -> Result<Vec<u8>, CodecError> {
     let body = postcard::to_allocvec(message).map_err(|_| CodecError::BadBody)?;
