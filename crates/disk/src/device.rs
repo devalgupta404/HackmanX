@@ -31,6 +31,13 @@ pub enum DiskError {
         len: u64,
         device_len: u64,
     },
+
+    #[error("I/O error at byte {offset}")]
+    Io {
+        offset: u64,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 pub(crate) fn check_geometry(len_bytes: u64, block_size: u32) -> Result<(), DiskError> {
