@@ -26,14 +26,20 @@ use crate::run_plan::RunPlan;
 /// The filesystem tools and the kernel, as the executor sees them. The real implementation
 /// runs tools on partition device nodes; tests use a fake.
 pub trait Filesystems {
-    fn used_ranges(&mut self, partition: &Partition) -> Result<CopyScope, RunError>;
+    /// `resized_by_us` says whether an earlier operation of this run resized the filesystem,
+    /// which leaves an NTFS volume marked for checking.
+    fn used_ranges(
+        &mut self,
+        partition: &Partition,
+        resized_by_us: bool,
+    ) -> Result<CopyScope, RunError>;
     /// Shrinks the filesystem to `len` bytes inside a guarded run, so a power cut part way
     /// through rolls back and the shrink simply runs again.
     fn shrink(&mut self, partition: &Partition, len: u64) -> Result<(), RunError>;
     /// Grows the filesystem to fill its (already grown) partition.
     fn grow(&mut self, partition: &Partition) -> Result<(), RunError>;
     fn recreate_swap(&mut self, partition: &Partition) -> Result<(), RunError>;
-    fn check(&mut self, partition: &Partition) -> Result<(), RunError>;
+    fn check(&mut self, partition: &Partition, resized_by_us: bool) -> Result<(), RunError>;
     fn refresh_kernel_view(&mut self) -> Result<(), RunError>;
 }
 
@@ -136,7 +142,7 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
 
             (Operation::Move { partition, .. }, 0) => {
                 let before = self.partition_before(index, *partition)?;
-                let scope = self.measure_scope(&before)?;
+                let scope = self.measure_scope(&before, self.resized_before(index, *partition))?;
                 self.journal.record_scope(self.disk, index, &scope)?;
                 step(index, 1)
             }
@@ -202,11 +208,15 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
         self.commit(next)
     }
 
-    fn measure_scope(&mut self, partition: &Partition) -> Result<CopyScope, ExecError> {
+    fn measure_scope(
+        &mut self,
+        partition: &Partition,
+        resized_by_us: bool,
+    ) -> Result<CopyScope, ExecError> {
         if !partition.content.copies_used_only() {
             return Ok(CopyScope::Everything);
         }
-        let scope = self.filesystems.used_ranges(partition)?;
+        let scope = self.filesystems.used_ranges(partition, resized_by_us)?;
         Ok(scope.coalesced(MAX_SCOPE_RANGES))
     }
 
@@ -232,12 +242,25 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
         let Some(last) = self.layouts.last() else {
             return Ok(());
         };
+        let operations = self.run.plan.operations.len() as u32;
         for partition in last.partitions.clone() {
             if partition.content.copies_used_only() && changed.contains(&partition.unique_guid) {
-                self.filesystems.check(&partition)?;
+                let resized = self.resized_before(operations, partition.unique_guid);
+                self.filesystems.check(&partition, resized)?;
             }
         }
         Ok(())
+    }
+
+    /// Whether any operation before `index` shrank or grew this partition's filesystem.
+    fn resized_before(&self, index: u32, guid: Guid) -> bool {
+        self.run.plan.operations[..index as usize]
+            .iter()
+            .any(|operation| {
+                matches!(operation,
+                Operation::Shrink { partition, .. } | Operation::Grow { partition, .. }
+                    if *partition == guid)
+            })
     }
 
     fn partition_before(&self, index: u32, guid: Guid) -> Result<Partition, ExecError> {

@@ -94,6 +94,11 @@ impl GptImage {
         Ok(image)
     }
 
+    /// The disk's own GUID, which identifies it even if its device name changes.
+    pub fn disk_guid(&self) -> Result<Guid, GptError> {
+        Ok(Guid(self.parse()?.header.disk_guid))
+    }
+
     pub fn sector_size(&self) -> u32 {
         self.sector_size as u32
     }

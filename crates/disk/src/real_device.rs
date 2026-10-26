@@ -16,6 +16,9 @@ pub enum Access {
     /// Exclusive on block devices: the kernel refuses the open while any partition of the
     /// device is mounted or otherwise in use.
     ReadWrite,
+    /// Not exclusive, for the recovery system: nothing is mounted there, and the filesystem
+    /// tools must still be able to open the partitions while BootShift holds the disk.
+    ReadWriteShared,
 }
 
 /// A disk or disk image opened with `O_DIRECT`, so reads and writes bypass the page cache.
@@ -133,7 +136,7 @@ fn open_direct(path: &Path, access: Access, exclusive: bool) -> io::Result<File>
     }
     OpenOptions::new()
         .read(true)
-        .write(access == Access::ReadWrite)
+        .write(access != Access::ReadOnly)
         .custom_flags(flags.bits() as i32)
         .open(path)
 }
