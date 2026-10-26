@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use bootshift_core::layout::{Layout, Target};
-use bootshift_core::plan::{Operation, Plan};
+use bootshift_core::plan::Plan;
 use bootshift_core::refusal::Refusal;
+use bootshift_core::units::format_bytes;
 use bootshift_engine::preflight;
 use bootshift_engine::service::{self, Inspected, ServiceError, SystemPaths};
 use bootshift_fs::run::SystemRunner;
@@ -111,7 +112,7 @@ fn print_layout(inspected: &Inspected) {
     println!(
         "{}: {}, {sector}-byte sectors",
         inspected.disk.path.display(),
-        size(inspected.disk.size)
+        format_bytes(inspected.disk.size)
     );
     println!(
         "{:>3}  {:<20} {:>10} {:>10}  {:<13} {:>10} {:>14}",
@@ -120,15 +121,15 @@ fn print_layout(inspected: &Inspected) {
     for p in &layout.partitions {
         let min = p
             .min_len
-            .map_or("-".to_string(), |s| size(s.to_bytes(sector)));
+            .map_or("-".to_string(), |s| format_bytes(s.to_bytes(sector)));
         println!(
             "{:>3}  {:<20} {:>10} {:>10}  {:<13} {:>10} {:>14}",
             p.number,
             p.name.chars().take(20).collect::<String>(),
-            size(p.extent.start.0 * u64::from(sector)),
-            size(p.extent.len.to_bytes(sector)),
+            format_bytes(p.extent.start.0 * u64::from(sector)),
+            format_bytes(p.extent.len.to_bytes(sector)),
             p.content.name(),
-            size(p.used.to_bytes(sector)),
+            format_bytes(p.used.to_bytes(sector)),
             min
         );
     }
@@ -140,12 +141,12 @@ fn print_plan(layout: &Layout, plan: &Plan) {
         return;
     }
     for (index, operation) in plan.operations.iter().enumerate() {
-        println!("{:>2}. {}", index + 1, describe(layout, operation));
+        println!("{:>2}. {}", index + 1, operation.describe(layout));
     }
     let sector = layout.geometry.sector_size;
     println!(
         "Copies about {} in total, during one restart.",
-        size(plan.sectors_to_copy().to_bytes(sector))
+        format_bytes(plan.sectors_to_copy().to_bytes(sector))
     );
     let unavailable = preflight::unavailable_operations(layout, plan);
     if !unavailable.is_empty() {
@@ -153,59 +154,8 @@ fn print_plan(layout: &Layout, plan: &Plan) {
     }
 }
 
-fn describe(layout: &Layout, operation: &Operation) -> String {
-    let sector = layout.geometry.sector_size;
-    let at = |lba: u64| size(lba * u64::from(sector));
-    let name = layout
-        .partition(operation.partition())
-        .map_or_else(|| operation.partition().to_string(), |p| p.label());
-    match operation {
-        Operation::Shrink { len, .. } => format!("Shrink {name} to {}", size(len.to_bytes(sector))),
-        Operation::Move {
-            to, copy_estimate, ..
-        } => format!(
-            "Move {name} to {} (copies about {})",
-            at(to.0),
-            size(copy_estimate.to_bytes(sector))
-        ),
-        Operation::Grow { len, .. } => format!("Grow {name} to {}", size(len.to_bytes(sector))),
-        Operation::RemoveSwap { .. } => format!("Set aside swap {name}"),
-        Operation::RecreateSwap { partition } => {
-            format!("Recreate swap {name} at {}", at(partition.extent.start.0))
-        }
-    }
-}
-
 fn print_refusals(refusals: &[Refusal]) {
     for refusal in refusals {
         eprintln!("✗ {}\n  → {}", refusal.reason, refusal.fix);
-    }
-}
-
-fn size(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-    let mut value = bytes as f64;
-    let mut unit = 0;
-    while value >= 1024.0 && unit < UNITS.len() - 1 {
-        value /= 1024.0;
-        unit += 1;
-    }
-    if unit == 0 {
-        format!("{bytes} B")
-    } else {
-        format!("{value:.1} {}", UNITS[unit])
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sizes_are_human_readable() {
-        assert_eq!(size(512), "512 B");
-        assert_eq!(size(1536), "1.5 KiB");
-        assert_eq!(size(256 << 20), "256.0 MiB");
-        assert_eq!(size(512_110_190_592), "476.9 GiB");
     }
 }
