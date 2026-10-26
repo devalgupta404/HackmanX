@@ -22,7 +22,7 @@ Every change must keep all of these true. If code would break one, it is wrong, 
 7. **Verify before commit.** Each chunk is read back with `O_DIRECT` and compared with the in-memory hash before it is journaled. The final verify recomputes the hash chain over the destination.
 8. **The journal is the source of truth.** Every step is idempotent and can resume from the journal alone. Never infer progress from disk contents.
 9. **The journal is written raw, never through vfat.** It is a preallocated file on the ESP, written via its physical extents with `O_DIRECT`. The ESP is not mounted during the move.
-10. **Never touch these:** the ESP's location, encrypted volumes, a hibernated Windows, USB-attached disks. Never issue TRIM/discard during a move.
+10. **Never touch these:** the ESP's location, BitLocker volumes, a hibernated Windows, USB-attached disks. Never resize contents we can't read; those partitions (LUKS, LVM PV, unknown) are only moved byte-for-byte. Never issue TRIM/discard during a move.
 11. **Preserve identity.** The disk GUID, every PARTUUID, type GUID, name, attributes and filesystem UUID stay unchanged.
 12. **Never auto-boot an OS over a half-moved disk.** On a fatal error, the recovery system explains what happened and powers off, with the recovery boot redirect still in place.
 
@@ -155,7 +155,7 @@ Testing is built before the feature it tests. A task is not done without its tes
 ## Domain notes that are easy to get wrong
 
 **Filesystems**
-- The `resize2fs -z` undo file does **not** survive a power cut. ext4 shrink is not resumable; see D2 in `task.md`.
+- The `resize2fs -z` undo file does **not** survive a power cut, and `ntfsresize` relocation isn't crash-safe either. Every offline resize therefore runs as a guarded run (`fs::guard`, task 0.6). Never call `resize2fs` or `ntfsresize` against a real partition outside a guarded run.
 - Get used blocks from `dumpe2fs`, never by parsing ext4 bitmaps ourselves (`BLOCK_UNINIT` groups have no bitmap on disk). Always copy the first and last MiB of a partition.
 - NTFS stores its partition start LBA at boot-sector offset `0x1C`, and keeps a backup boot sector in the partition's last sector. Both must be fixed after a move.
 - `ntfsresize` leaves the volume dirty, so Windows runs chkdsk once afterwards.
