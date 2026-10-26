@@ -10,28 +10,33 @@ use eframe::egui::{
     epaint::text::VariationCoords,
 };
 
-pub const VOID: Color32 = Color32::from_rgb(0x0b, 0x0b, 0x0d);
-pub const DECK: Color32 = Color32::from_rgb(0x14, 0x14, 0x17);
-pub const DECK_HIGH: Color32 = Color32::from_rgb(0x1b, 0x1b, 0x20);
-pub const RULE: Color32 = Color32::from_rgb(0x26, 0x26, 0x2c);
-pub const RULE_SOFT: Color32 = Color32::from_rgb(0x1d, 0x1d, 0x22);
-pub const RULE_HOVER: Color32 = Color32::from_rgb(0x3a, 0x3a, 0x44);
+// A warm light palette. Surfaces get lighter as they rise: the work area ground is the greyest,
+// panels sit a shade lighter, and cards are white. Amber still carries interaction, green means
+// verified, red means stop.
+pub const VOID: Color32 = Color32::from_rgb(0xec, 0xea, 0xe4);
+pub const DECK: Color32 = Color32::from_rgb(0xf6, 0xf4, 0xf0);
+pub const DECK_HIGH: Color32 = Color32::from_rgb(0xff, 0xff, 0xff);
+pub const RULE: Color32 = Color32::from_rgb(0xd8, 0xd5, 0xcd);
+pub const RULE_SOFT: Color32 = Color32::from_rgb(0xe6, 0xe3, 0xdc);
+pub const RULE_HOVER: Color32 = Color32::from_rgb(0xb9, 0xb5, 0xab);
 
-pub const INK: Color32 = Color32::from_rgb(0xea, 0xe8, 0xe3);
-pub const DIM: Color32 = Color32::from_rgb(0x9a, 0x98, 0x92);
-pub const FAINT: Color32 = Color32::from_rgb(0x6a, 0x68, 0x62);
+pub const INK: Color32 = Color32::from_rgb(0x21, 0x1f, 0x1b);
+pub const DIM: Color32 = Color32::from_rgb(0x63, 0x60, 0x59);
+pub const FAINT: Color32 = Color32::from_rgb(0x95, 0x92, 0x8a);
 
-pub const SIGNAL: Color32 = Color32::from_rgb(0xff, 0xb2, 0x24);
-pub const SIGNAL_HOVER: Color32 = Color32::from_rgb(0xff, 0xc3, 0x52);
-pub const SIGNAL_DIM: Color32 = Color32::from_rgb(0xb8, 0x7b, 0x12);
-pub const SIGNAL_INK: Color32 = Color32::from_rgb(0x1a, 0x12, 0x03);
-pub const VERIFIED: Color32 = Color32::from_rgb(0x5f, 0xd3, 0x8d);
-pub const STOP: Color32 = Color32::from_rgb(0xff, 0x5f, 0x56);
+pub const SIGNAL: Color32 = Color32::from_rgb(0xd9, 0x82, 0x0a);
+pub const SIGNAL_HOVER: Color32 = Color32::from_rgb(0xf0, 0x94, 0x12);
+pub const SIGNAL_DIM: Color32 = Color32::from_rgb(0xa3, 0x5f, 0x08);
+pub const SIGNAL_INK: Color32 = Color32::from_rgb(0x2a, 0x1c, 0x06);
+pub const VERIFIED: Color32 = Color32::from_rgb(0x15, 0x8f, 0x56);
+pub const STOP: Color32 = Color32::from_rgb(0xc9, 0x30, 0x2a);
 
 /// The disk bar's ground, which is also the free-space colour.
-pub const BAR_GROUND: Color32 = Color32::from_rgb(0x08, 0x08, 0x0a);
+pub const BAR_GROUND: Color32 = Color32::from_rgb(0xe4, 0xe2, 0xdb);
+/// Block labels keep a light fill because they are drawn over a dark halo, so they stay legible
+/// on both the pale block backgrounds and the stronger used-space fills.
 pub const BLOCK_TEXT: Color32 = Color32::from_rgb(0xfb, 0xfa, 0xf8);
-pub const LEADER: Color32 = Color32::from_rgb(0x3b, 0x3b, 0x45);
+pub const LEADER: Color32 = Color32::from_rgb(0xc2, 0xbf, 0xb6);
 
 pub fn alpha(colour: Color32, share: f32) -> Color32 {
     let [r, g, b, _] = colour.to_array();
@@ -56,8 +61,8 @@ pub fn content_colour(content: Content) -> Color32 {
         Content::Btrfs => Color32::from_rgb(0xc8, 0x6b, 0xd6),
         Content::Xfs => Color32::from_rgb(0xe0, 0x60, 0x9a),
         Content::Swap => Color32::from_rgb(0xa6, 0x89, 0x6b),
-        Content::EfiSystem | Content::BitLocker => Color32::from_rgb(0x4a, 0x4a, 0x54),
-        Content::Opaque => Color32::from_rgb(0x6f, 0x6d, 0x78),
+        Content::EfiSystem | Content::BitLocker => Color32::from_rgb(0x8b, 0x8b, 0x95),
+        Content::Opaque => Color32::from_rgb(0x9a, 0x98, 0xa2),
     }
 }
 
@@ -232,7 +237,7 @@ pub mod layout {
 
 /// egui's own widgets in the app's colours, for the few places they show (the disk picker).
 pub fn visuals() -> egui::Visuals {
-    let mut visuals = egui::Visuals::dark();
+    let mut visuals = egui::Visuals::light();
     visuals.panel_fill = VOID;
     visuals.window_fill = DECK;
     visuals.extreme_bg_color = VOID;
