@@ -1,0 +1,13 @@
+[package]
+name = "bootshift-boot"
+description = "ESP preparation, GRUB redirect, boot order and recovery initramfs builder"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+bootshift-core.workspace = true
+
+[lints]
+workspace = true

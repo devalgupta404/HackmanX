@@ -1,0 +1,17 @@
+[package]
+name = "bootshift-cli"
+description = "The bootshift binary, used in the normal system and in the recovery boot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "bootshift"
+path = "src/main.rs"
+
+[dependencies]
+bootshift-engine.workspace = true
+
+[lints]
+workspace = true

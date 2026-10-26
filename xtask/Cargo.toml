@@ -1,0 +1,10 @@
+[package]
+name = "xtask"
+description = "Developer tasks: test fixtures, VM tests, crash suites, initramfs builds"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

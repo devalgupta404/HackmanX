@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+repository = "https://github.com/devalgupta404/HackmanX"
+
+[workspace.dependencies]
+bootshift-core = { path = "crates/core" }
+bootshift-disk = { path = "crates/disk" }
+bootshift-fs = { path = "crates/fs" }
+bootshift-boot = { path = "crates/boot" }
+bootshift-engine = { path = "crates/engine" }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
