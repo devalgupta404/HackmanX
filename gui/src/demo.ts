@@ -2,7 +2,7 @@
 // "plan" only lists what changed; the real planner runs in the helper service.
 
 import type { Backend } from "./backend";
-import type { Layout, Operation, Target } from "./types";
+import type { CheckResult, Layout, Operation, Target } from "./types";
 
 const MIB = 2048;
 const GIB = 1024 * MIB;
@@ -61,6 +61,24 @@ function listChanges(layout: Layout, target: Target): Operation[] {
   return operations;
 }
 
+function demoChecks(): CheckResult[] {
+  const passed = (name: string, detail: string) => ({ name, detail, passed: true });
+  return [
+    passed("Firmware mode", "UEFI, Secure Boot on"),
+    passed("Partition table", "GPT, 6 partitions, backup header intact"),
+    passed("How the disk is attached", "NVMe, direct (not over USB)"),
+    passed("Power", "On mains, battery at 87%"),
+    passed("Disk health", "SMART self-assessment passed"),
+    passed("Kernel modules", "Present for 6.11.0-9-generic"),
+    passed("Room on the EFI partition", "180 MiB free, 46 MiB needed"),
+    passed("Bootloader", "GRUB (ubuntu), signed shim in place"),
+    passed("Hibernation", "No hibernated system in swap"),
+    passed("Encryption", "No BitLocker volume on this disk"),
+    passed("Filesystems", "ext4 and NTFS both clean and readable"),
+    passed("Partition-table backup", "Written to the EFI partition first"),
+  ];
+}
+
 export function demoBackend(): Backend {
   const layout = demoLayout();
   return {
@@ -79,8 +97,9 @@ export function demoBackend(): Backend {
       return { result: "ok", value: { operations, copy_bytes: copied * 512, unavailable: [] } };
     },
     // The pretend checks pass and apply "succeeds", so the whole flow can be walked through in
-    // a browser, restart screen included. The notice bar says it's demo data throughout.
-    check: async () => ({ result: "ok", value: null }),
+    // a browser, restart screen included. The rail says it's demo data throughout. The names
+    // and order match `engine::preflight::evaluate`; keep them in step.
+    check: async () => ({ result: "ok", value: demoChecks() }),
     apply: async () => ({ result: "ok", value: { restart_to_begin: true } }),
   };
 }

@@ -1,212 +1,444 @@
-/* BootShift's one committed look: midnight ground, mint accent, partitions colour-coded.
-   The app deals in a user's whole disk, so it dresses like an instrument, not a toy. */
+/* BootShift is a tool for doing something irreversible to your own disk, so the interface is
+   built to look measured rather than exciting: a graphite bench, amber as the only interactive
+   colour, and green and red reserved for what they mean here — verified, and stop. The disk is
+   the hero; everything around it stays quiet. */
 
 :root {
   color-scheme: dark;
-  --bg: #101512;
-  --panel: #151b17;
-  --chrome: #1a201c;
-  --ink: #e2eae4;
-  --muted: #8ca094;
-  --faint: #5c6a61;
-  --hair: #28322b;
-  --hair-soft: #202a23;
-  --mint: #5be3a9;
-  --mint-dim: #2e9c72;
-  --mint-ink: #0a120d;
-  --danger: #e07a6b;
-  --warn: #d2a75f;
-  --ok: #6fd6a0;
-  --ntfs: #5f87b8;
-  --ext4: #3dbd8b;
-  --btrfs: #4aa3a8;
-  --xfs: #8d85c9;
-  --swap: #c29b59;
-  --system: #4a554e;
-  --unknown: #5c6a61;
-  font-family: "Ubuntu", system-ui, sans-serif;
+
+  --void: #0b0b0d;
+  --deck: #141417;
+  --deck-high: #1b1b20;
+  --rule: #26262c;
+  --rule-soft: #1d1d22;
+  --ink: #eae8e3;
+  --dim: #9a9892;
+  --faint: #6a6862;
+
+  --signal: #ffb224;
+  --signal-dim: #b87b12;
+  --signal-ink: #1a1203;
+  --verified: #5fd38d;
+  --stop: #ff5f56;
+
+  /* Partition colours avoid green and amber so those keep their meaning. */
+  --ntfs: #5b6ee1;
+  --ext4: #22b8c7;
+  --btrfs: #c86bd6;
+  --xfs: #e0609a;
+  --swap: #a6896b;
+  --system: #4a4a54;
+  --unknown: #6f6d78;
+
+  --sans: "Archivo", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --rail-w: 13.5rem;
+  --readout-w: 17.5rem;
+  --bar-h: 3.25rem;
+
+  font-family: var(--sans);
   font-size: 15px;
   line-height: 1.5;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--void);
   color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgb(91 227 169 / 0.25);
+  background: rgb(255 178 36 / 0.25);
 }
 
-header {
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---------- shell ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--readout-w);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "rail work readout"
+    "rail bar  bar";
+  height: 100vh;
+}
+
+.rail {
+  grid-area: rail;
   display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.7rem 1.5rem;
-  border-bottom: 1px solid var(--hair);
-  background: var(--chrome);
+  flex-direction: column;
+  border-right: 1px solid var(--rule);
+  background: var(--deck);
+  overflow: auto;
 }
 
-.brand {
-  font-weight: 700;
-  font-size: 1.05rem;
-  letter-spacing: 0.01em;
-}
-
-.brand em {
-  font-style: normal;
-  color: var(--mint);
-}
-
-#stepper {
+.work {
+  grid-area: work;
   display: flex;
-  gap: 0.25rem;
-  flex: 1;
-  flex-wrap: wrap;
-}
-
-.step {
-  margin: 0;
-  padding: 0.3rem 0.8rem;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: none;
-  color: var(--faint);
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: default;
-}
-
-.step.reachable {
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.step.reachable:hover {
-  border-color: var(--hair);
-}
-
-.step.current {
-  color: var(--mint);
-  border-color: var(--mint-dim);
-  background: rgb(91 227 169 / 0.08);
-}
-
-.disk-pick {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.disk-pick select {
-  margin-left: 0.5rem;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--hair);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.9rem;
-}
-
-main {
-  max-width: 62rem;
-  margin: 0 auto;
-  padding: 0 1.5rem 3rem;
-}
-
-.notice {
-  margin-top: 1rem;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid rgb(210 167 95 / 0.4);
-  border-radius: 7px;
-  color: var(--warn);
-  background: rgb(210 167 95 / 0.07);
-  font-size: 0.9rem;
+  flex-direction: column;
+  justify-content: safe center;
+  min-width: 0;
+  padding: 2rem 2.25rem 1.5rem;
+  overflow: auto;
 }
 
 .screen {
-  margin-top: 1.5rem;
-  padding: 1.4rem 1.6rem 1.6rem;
-  border: 1px solid var(--hair);
-  border-radius: 12px;
-  background: linear-gradient(var(--panel), var(--bg));
+  width: 100%;
 }
 
-h2 {
-  margin: 0 0 1rem;
-  font-size: 1.15rem;
+.readout {
+  grid-area: readout;
+  border-left: 1px solid var(--rule);
+  background: var(--deck);
+  padding: 1.5rem 1.25rem;
+  overflow: auto;
 }
 
-.barcap {
-  margin: 1rem 0 0.4rem;
-  font-family: "Ubuntu Mono", monospace;
-  font-size: 0.75rem;
+.actionbar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 2.25rem;
+  border-top: 1px solid var(--rule);
+  background: linear-gradient(var(--deck), var(--void));
+}
+
+/* ---------- rail ---------- */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.15rem 1.25rem 1.1rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+/* A disk platter with the sector being moved lit in amber. */
+.brand-mark {
+  position: relative;
+  width: 17px;
+  height: 17px;
+  flex: none;
+  border: 1.5px solid #3a3a44;
+  border-radius: 50%;
+  background: var(--void);
+}
+
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 1.5px;
+  width: 4px;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--signal);
+}
+
+.brand-word {
+  font-size: 1.02rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--dim);
+}
+
+.brand-word b {
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.stepper {
+  display: flex;
+  flex-direction: column;
+  padding: 0.9rem 0.6rem;
+  gap: 1px;
+  flex: 1;
+}
+
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.4rem 1fr;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: default;
+}
+
+/* The rail is a route: a hairline joins each stop to the next. */
+.step + .step::before {
+  content: "";
+  position: absolute;
+  left: 1.33rem;
+  top: -5px;
+  width: 1px;
+  height: 7px;
+  background: var(--rule);
+}
+
+.step-n {
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--void);
+  font-family: var(--mono);
+  font-size: 0.68rem;
   color: var(--faint);
 }
 
-.hint {
+.step.reachable {
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.step.reachable .step-n {
+  border-color: var(--rule);
+  color: var(--dim);
+}
+
+.step.reachable:hover {
+  background: var(--deck-high);
+  color: var(--ink);
+}
+
+.step.done .step-n {
+  border-color: rgb(95 211 141 / 0.4);
+  color: var(--verified);
+}
+
+.step.current {
+  color: var(--ink);
+  background: var(--deck-high);
+  font-weight: 600;
+}
+
+.step.current .step-n {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--signal-ink);
+  font-weight: 700;
+}
+
+.rail-foot {
+  padding: 1rem 1.25rem 1.15rem;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.picker {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--faint);
+  font-size: 0.74rem;
+}
+
+.rail-foot select {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+
+.demo-badge {
+  margin: 0.8rem 0 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid rgb(255 178 36 / 0.25);
+  border-radius: 3px;
+  background: rgb(255 178 36 / 0.06);
+  color: var(--signal);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+/* ---------- screen furniture ---------- */
+
+.screen[hidden] {
+  display: none;
+}
+
+.head {
+  max-width: 46rem;
+  margin-bottom: 1.6rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.lede {
+  margin: 0.45rem 0 0;
+  max-width: 44rem;
+  color: var(--dim);
+  font-size: 0.92rem;
+}
+
+.note {
   margin: 1rem 0 0;
+  max-width: 44rem;
   color: var(--faint);
-  font-size: 0.85rem;
+  font-size: 0.84rem;
 }
 
-/* ---------- the disk bar ---------- */
+/* ---------- the disk ---------- */
+
+.bars {
+  padding: 1.1rem 1.25rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--deck);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+}
+
+.bar-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.bar-head + * + .bar-head {
+  margin-top: 0;
+}
+
+.bar-note {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.bar-wrap {
+  position: relative;
+}
 
 .disk-bar {
   position: relative;
-  height: 4.5rem;
-  border: 1px solid var(--hair);
-  border-radius: 8px;
-  background: repeating-linear-gradient(135deg, #0a0e0c 0 5px, #131815 5px 10px);
+  height: var(--bar-h);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(90deg, rgb(255 255 255 / 0.022) 0 1px, transparent 1px 7px),
+    #08080a;
   overflow: hidden;
 }
 
-/* Tiny partitions, such as the EFI system partition on a large disk, stay visible. */
+.disk-bar.editable {
+  height: calc(var(--bar-h) + 1.1rem);
+  border-color: #32323a;
+}
+
 .partition {
   position: absolute;
   top: 0;
   bottom: 0;
   min-width: 6px;
-  box-sizing: border-box;
-  padding: 0.4rem 0.6rem;
-  border-right: 1px solid #0b0f0c;
+  padding: 0.4rem 0.55rem;
+  border-right: 1px solid #08080a;
   background: var(--unknown);
-  color: #f2f7f3;
-  font-size: 0.78rem;
+  color: #fbfaf8;
+  font-size: 0.74rem;
   overflow: hidden;
   white-space: nowrap;
-  cursor: grab;
+  cursor: default;
   touch-action: none;
+  transition:
+    filter 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
-.partition.tiny {
-  z-index: 1;
-  padding: 0;
-  color: transparent;
+.partition.movable {
+  cursor: grab;
+}
+
+.partition.movable:hover {
+  filter: brightness(1.14);
+}
+
+.partition.selected {
+  box-shadow:
+    inset 0 0 0 1px var(--signal),
+    0 0 0 1px rgb(255 178 36 / 0.3);
+  z-index: 5;
+}
+
+.disk-bar.moving .partition.movable,
+.disk-bar.moving .partition.movable:hover {
+  cursor: grabbing;
+}
+
+.disk-bar.resizing .partition {
+  cursor: ew-resize;
 }
 
 .partition:focus-visible {
-  outline: 2px solid var(--mint);
+  outline: 2px solid var(--signal);
   outline-offset: -2px;
 }
 
 .partition.locked {
   cursor: not-allowed;
-  background-image: repeating-linear-gradient(135deg, transparent 0 8px, rgb(0 0 0 / 0.25) 8px 10px);
+  background-image: repeating-linear-gradient(135deg, transparent 0 7px, rgb(0 0 0 / 0.32) 7px 9px);
 }
 
-/* Solid colour with a fine block texture is data; the dark tint behind it is free space. */
-.partition .used {
+/* Slivers get a capsule above the bar instead of an unreadable label inside it. */
+.partition.tiny {
+  z-index: 4;
+  min-width: 9px;
+  padding: 0;
+  color: transparent;
+  box-shadow: inset 0 0 0 1px rgb(8 8 10 / 0.85);
+}
+
+.partition.tiny .handle {
+  display: none;
+}
+
+.partition.tiny.movable:hover,
+.partition.tiny.selected {
+  box-shadow: inset 0 0 0 1px var(--signal);
+}
+
+.used {
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  background-color: rgb(255 255 255 / 0.25);
-  background-image: repeating-linear-gradient(90deg, rgb(9 13 11 / 0.35) 0 1px, transparent 1px 7px);
+  background-color: rgb(255 255 255 / 0.22);
+  background-image: repeating-linear-gradient(90deg, rgb(8 8 10 / 0.35) 0 1px, transparent 1px 6px);
 }
 
 .partition .name,
@@ -214,67 +446,134 @@ h2 {
   position: relative;
   z-index: 2;
   display: block;
-  text-overflow: ellipsis;
   overflow: hidden;
-  text-shadow: 0 1px 3px rgb(4 7 5 / 0.55);
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgb(4 4 6 / 0.7);
 }
 
 .partition .name {
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .partition .size {
-  opacity: 0.85;
-  font-size: 0.72rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.88;
 }
 
+/* The move grip: present at rest so the block reads as draggable, brighter on hover. */
+.grab {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(0.75rem, 40%);
+  height: 1.05rem;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: radial-gradient(circle, rgb(255 255 255 / 0.95) 1px, transparent 1.2px);
+  background-size: 0.375rem 0.35rem;
+  filter: drop-shadow(0 1px 1px rgb(4 4 6 / 0.8));
+  transition: opacity 0.12s ease;
+}
+
+.partition.movable:hover .grab,
+.partition.movable:focus-visible .grab {
+  opacity: 0.95;
+}
+
+.partition.tiny .grab {
+  display: none;
+}
+
+/* A narrow partition must keep a middle to grab, so each edge handle is capped at a fifth. */
 .handle {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 0.6rem;
+  width: min(0.7rem, 20%);
   cursor: ew-resize;
   z-index: 3;
+  background-color: rgb(4 4 6 / 0.3);
+  background-image: linear-gradient(
+    var(--grip-edge, rgb(255 255 255 / 0.32)),
+    var(--grip-edge, rgb(255 255 255 / 0.32))
+  );
+  background-repeat: no-repeat;
+  background-size: 2px 100%;
+  transition: background-color 0.12s ease;
+}
+
+.handle::before,
+.handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 1px;
+  height: 1.05rem;
+  transform: translateY(-50%);
+  background: rgb(255 255 255 / 0.8);
+  box-shadow: 0 1px 1px rgb(4 4 6 / 0.8);
+}
+
+.handle::before {
+  left: calc(50% - 2px);
+}
+
+.handle::after {
+  left: calc(50% + 1px);
 }
 
 .handle.start {
   left: 0;
+  background-position: left center;
 }
 
 .handle.end {
   right: 0;
+  background-position: right center;
 }
 
-.handle:hover {
-  background: rgb(91 227 169 / 0.35);
+.handle:hover,
+.disk-bar.resizing .handle {
+  --grip-edge: var(--signal);
+  background-color: rgb(255 178 36 / 0.25);
+}
+
+.handle:hover::before,
+.handle:hover::after {
+  background: #fff;
 }
 
 .content-ntfs {
-  background-color: color-mix(in srgb, var(--ntfs) 30%, var(--bg));
+  background-color: color-mix(in srgb, var(--ntfs) 26%, var(--void));
 }
 .content-ntfs .used {
   background-color: var(--ntfs);
 }
 .content-ext4 {
-  background-color: color-mix(in srgb, var(--ext4) 26%, var(--bg));
+  background-color: color-mix(in srgb, var(--ext4) 22%, var(--void));
 }
 .content-ext4 .used {
   background-color: var(--ext4);
 }
 .content-btrfs {
-  background-color: color-mix(in srgb, var(--btrfs) 26%, var(--bg));
+  background-color: color-mix(in srgb, var(--btrfs) 22%, var(--void));
 }
 .content-btrfs .used {
   background-color: var(--btrfs);
 }
 .content-xfs {
-  background-color: color-mix(in srgb, var(--xfs) 26%, var(--bg));
+  background-color: color-mix(in srgb, var(--xfs) 22%, var(--void));
 }
 .content-xfs .used {
   background-color: var(--xfs);
 }
 .content-swap {
-  background-color: color-mix(in srgb, var(--swap) 30%, var(--bg));
+  background-color: color-mix(in srgb, var(--swap) 26%, var(--void));
 }
 .content-swap .used {
   background-color: var(--swap);
@@ -284,292 +583,562 @@ h2 {
   background-color: var(--system);
 }
 .content-opaque {
-  background-color: color-mix(in srgb, var(--unknown) 45%, var(--bg));
+  background-color: color-mix(in srgb, var(--unknown) 42%, var(--void));
 }
 .content-opaque .used {
   background-color: var(--unknown);
 }
 
-/* ---------- legend ---------- */
+/* ---------- sliver callouts ---------- */
 
-.legend {
-  margin-top: 1rem;
-  border-top: 1px solid var(--hair-soft);
+.flags {
+  position: relative;
+  height: 1.95rem;
 }
 
-.legend-row {
-  display: grid;
-  grid-template-columns: 14px 1.6fr 1fr 1fr 1.2fr;
-  gap: 0.8rem;
+.flags[hidden] {
+  display: none;
+}
+
+.leaders {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  overflow: visible;
+}
+
+.leaders line {
+  stroke: #3b3b45;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.flag {
+  position: absolute;
+  top: 0;
+  display: flex;
   align-items: center;
-  padding: 0.45rem 0.2rem;
-  border-bottom: 1px solid var(--hair-soft);
-  font-size: 0.82rem;
+  gap: 0.35rem;
+  max-width: 14rem;
+  padding: 0.08rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--deck-high);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
-.legend-row .sw {
-  width: 12px;
-  height: 12px;
-  border-radius: 3.5px;
-}
-
-/* Legend swatches show the solid data colour, not the free-space tint. */
-.legend-row .sw.content-ntfs {
-  background: var(--ntfs);
-}
-.legend-row .sw.content-ext4 {
-  background: var(--ext4);
-}
-.legend-row .sw.content-btrfs {
-  background: var(--btrfs);
-}
-.legend-row .sw.content-xfs {
-  background: var(--xfs);
-}
-.legend-row .sw.content-swap {
-  background: var(--swap);
-}
-.legend-row .sw.content-opaque {
+.flag .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
   background: var(--unknown);
 }
 
-.legend-row .l-name {
+.flag .fname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+
+.flag .fsize {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.flag.pickable {
+  cursor: pointer;
+}
+
+.flag.pickable:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.flag .dot.content-ntfs {
+  background: var(--ntfs);
+}
+.flag .dot.content-ext4 {
+  background: var(--ext4);
+}
+.flag .dot.content-btrfs {
+  background: var(--btrfs);
+}
+.flag .dot.content-xfs {
+  background: var(--xfs);
+}
+.flag .dot.content-swap {
+  background: var(--swap);
+}
+.flag .dot.content-efisystem,
+.flag .dot.content-bitlocker {
+  background: var(--system);
+}
+
+/* ---------- the measuring scale ---------- */
+
+.scale {
+  margin-top: 2px;
+}
+
+.scale-ticks {
+  height: 5px;
+  background-image:
+    repeating-linear-gradient(to right, var(--dim) 0 1px, transparent 1px 10%),
+    repeating-linear-gradient(to right, var(--rule) 0 1px, transparent 1px 2.5%);
+  background-size:
+    calc(100% + 1px) 5px,
+    calc(100% + 1px) 3px;
+  background-repeat: no-repeat;
+}
+
+.scale-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.15rem;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- the dimension gutter between the two bars ---------- */
+/* Each partition that moves gets a dimension line from where it is to where it lands, the way
+   a drawing marks a distance. No change, no lines: the gutter collapses. */
+
+.delta {
+  position: relative;
+  height: 2.6rem;
+  margin: 0.35rem 0 0.9rem;
+}
+
+.delta:empty {
+  height: 0.9rem;
+  margin: 0.15rem 0 0.5rem;
+  border-bottom: 1px dashed var(--rule-soft);
+}
+
+.shift {
+  position: absolute;
+  height: 1px;
+  background: var(--signal-dim);
+}
+
+.shift::before,
+.shift::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  width: 1px;
+  height: 7px;
+  background: var(--signal-dim);
+}
+
+.shift::before {
+  left: 0;
+}
+
+.shift::after {
+  right: 0;
+}
+
+.shift .tip {
+  position: absolute;
+  top: -4px;
+  width: 0;
+  height: 0;
+  border-top: 4.5px solid transparent;
+  border-bottom: 4.5px solid transparent;
+}
+
+.shift.right .tip {
+  right: 0;
+  border-left: 7px solid var(--signal);
+}
+
+.shift.left .tip {
+  left: 0;
+  border-right: 7px solid var(--signal);
+}
+
+.shift .amount {
+  position: absolute;
+  bottom: 0.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 0.3rem;
+  background: var(--deck);
+  color: var(--signal);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- the partition table ---------- */
+
+.table {
+  margin-top: 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--deck);
+  overflow: hidden;
+}
+
+.trow {
+  display: grid;
+  grid-template-columns: 0.75rem minmax(7rem, 1.7fr) 7rem minmax(5rem, 1fr) minmax(6rem, 1fr) 9rem;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.82rem;
+  cursor: default;
+  background: none;
+  border-left: 2px solid transparent;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+}
+
+.trow:last-child {
+  border-bottom: none;
+}
+
+.trow.labels {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  background: var(--deck-high);
+  color: var(--faint);
+  font-size: 0.72rem;
+}
+
+.trow.pickable {
+  cursor: pointer;
+}
+
+.trow.pickable:hover {
+  background: var(--deck-high);
+}
+
+.trow.selected {
+  border-left-color: var(--signal);
+  background: rgb(255 178 36 / 0.06);
+}
+
+.trow .sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--unknown);
+}
+
+.trow .sw.content-ntfs {
+  background: var(--ntfs);
+}
+.trow .sw.content-ext4 {
+  background: var(--ext4);
+}
+.trow .sw.content-btrfs {
+  background: var(--btrfs);
+}
+.trow .sw.content-xfs {
+  background: var(--xfs);
+}
+.trow .sw.content-swap {
+  background: var(--swap);
+}
+.trow .sw.content-efisystem,
+.trow .sw.content-bitlocker {
+  background: var(--system);
+}
+
+.t-name {
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.legend-row .l-dim {
-  color: var(--muted);
+.t-num {
+  font-family: var(--mono);
+  font-size: 0.76rem;
   font-variant-numeric: tabular-nums;
+  color: var(--dim);
 }
 
-/* ---------- buttons ---------- */
-
-button {
-  padding: 0.5rem 1.2rem;
-  border: 1px solid #39453e;
-  border-radius: 7px;
-  background: #1c2420;
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.9rem;
-  cursor: pointer;
+.t-change {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--signal);
+  text-align: right;
 }
 
-button:disabled {
-  opacity: 0.4;
-  cursor: default;
+.t-change.quiet {
+  color: var(--faint);
 }
 
-button.primary {
-  border-color: var(--mint);
-  background: var(--mint);
-  color: var(--mint-ink);
-  font-weight: 700;
-}
+/* ---------- plan ---------- */
 
-button.primary:not(:disabled) {
-  box-shadow: 0 0 20px rgb(91 227 169 / 0.25);
-}
-
-button.danger {
-  border-color: rgb(224 122 107 / 0.5);
-  background: transparent;
-  color: var(--danger);
-  font-family: "Ubuntu Mono", monospace;
-  font-size: 0.85rem;
-}
-
-button.danger:hover {
-  background: rgb(224 122 107 / 0.08);
-}
-
-.btnrow {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.7rem;
-  margin-top: 1.4rem;
-  flex-wrap: wrap;
-}
-
-.btnrow button:first-child:not(:only-child) {
-  margin-right: auto;
-}
-
-.confirm {
-  display: block;
-  margin-top: 1.2rem;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.confirm input {
-  accent-color: var(--mint);
-  margin-right: 0.4rem;
-}
-
-/* ---------- plan screen ---------- */
-
-.plan-steps {
+.steps {
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--hair-soft);
-  counter-reset: plan;
+  counter-reset: step;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--deck);
+  overflow: hidden;
 }
 
-.plan-steps li {
+.steps li {
   display: grid;
-  grid-template-columns: 28px 1fr;
-  gap: 0.7rem;
-  align-items: baseline;
-  padding: 0.7rem 0.2rem;
-  border-bottom: 1px solid var(--hair-soft);
-  font-size: 0.92rem;
-  counter-increment: plan;
-}
-
-.plan-steps li::before {
-  content: counter(plan);
-  width: 21px;
-  height: 21px;
-  border: 1px solid var(--mint-dim);
-  border-radius: 50%;
-  color: var(--mint);
-  font-family: "Ubuntu Mono", monospace;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-align: center;
-  line-height: 20px;
-  position: relative;
-  top: 2px;
-}
-
-.plan-steps li .fix {
-  grid-column: 2;
-}
-
-.estimate {
-  margin: 1.2rem 0 0;
+  grid-template-columns: 1.6rem 1fr;
+  gap: 0.9rem;
+  align-items: center;
   padding: 0.75rem 1rem;
-  border: 1px solid rgb(91 227 169 / 0.3);
-  border-radius: 8px;
-  background: rgb(91 227 169 / 0.07);
-  font-size: 0.92rem;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.9rem;
+  counter-increment: step;
 }
 
-.estimate b {
-  color: var(--mint);
+.steps li:last-child {
+  border-bottom: none;
 }
 
-/* ---------- problems and checks ---------- */
+.steps li::before {
+  content: counter(step);
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  color: var(--signal);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
 
-.problems {
+.steps:empty::after {
+  content: "Nothing to do yet. Move a partition on the previous screen.";
+  display: block;
+  padding: 1.5rem 1rem;
+  color: var(--faint);
+  font-size: 0.88rem;
+}
+
+/* ---------- refusals ---------- */
+
+.refusals {
   margin: 1rem 0 0;
   padding: 0;
   list-style: none;
 }
 
-.problems li,
-.checks li {
-  display: grid;
-  grid-template-columns: 26px 1fr;
-  gap: 0.75rem;
-  padding: 0.7rem 0.2rem;
-  border-bottom: 1px solid var(--hair-soft);
-  font-size: 0.92rem;
+.refusals:empty {
+  display: none;
 }
 
-.problems li::before,
-.checks li.fail::before {
-  content: "✕";
-  width: 19px;
-  height: 19px;
-  border-radius: 50%;
-  background: rgb(224 122 107 / 0.13);
-  color: var(--danger);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-align: center;
-  line-height: 19px;
-  position: relative;
-  top: 2px;
+.refusals li {
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid rgb(255 95 86 / 0.3);
+  border-left: 2px solid var(--stop);
+  border-radius: 3px;
+  background: rgb(255 95 86 / 0.05);
+  font-size: 0.86rem;
 }
+
+.refusals .fix {
+  margin: 0.35rem 0 0;
+  color: var(--dim);
+  font-size: 0.8rem;
+}
+
+.refusals .fix::before {
+  content: "Fix: ";
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ---------- checks ---------- */
 
 .checks {
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--hair-soft);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--deck);
+  overflow: hidden;
 }
 
-.checks li.pass::before {
-  content: "✓";
-  width: 19px;
-  height: 19px;
+.checks li {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(9rem, 0.9fr) 1.6fr;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.52rem 1rem;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.86rem;
+  color: var(--faint);
+}
+
+.checks li:last-child {
+  border-bottom: none;
+}
+
+.checks .mark {
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
   border-radius: 50%;
-  background: rgb(111 214 160 / 0.12);
-  color: var(--ok);
-  font-size: 0.72rem;
+  border: 1px solid var(--rule);
+  font-size: 0.62rem;
   font-weight: 700;
-  text-align: center;
-  line-height: 19px;
-  position: relative;
-  top: 2px;
+  color: var(--faint);
 }
 
-.problems .fix,
-.checks .fix {
-  margin: 0.4rem 0 0;
-  padding: 0.55rem 0.8rem;
-  border: 1px solid var(--hair);
-  border-left: 3px solid var(--danger);
-  border-radius: 6px;
-  background: #121815;
-  color: var(--muted);
-  font-size: 0.84rem;
+.checks .what {
+  color: var(--faint);
 }
 
-.problems .fix::before,
-.checks .fix::before {
-  content: "Fix: ";
+.checks .detail {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--rule);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checks li.pass .what,
+.checks li.fail .what {
   color: var(--ink);
-  font-weight: 700;
+}
+
+.checks li.pass .detail {
+  color: var(--dim);
+}
+
+.checks li.pass .mark {
+  border-color: rgb(95 211 141 / 0.45);
+  background: rgb(95 211 141 / 0.12);
+  color: var(--verified);
+}
+
+.checks li.pass .mark::before {
+  content: "✓";
+}
+
+.checks li.fail .mark {
+  border-color: rgb(255 95 86 / 0.5);
+  background: rgb(255 95 86 / 0.12);
+  color: var(--stop);
+}
+
+.checks li.fail .mark::before {
+  content: "✕";
+}
+
+.checks li.fail .detail {
+  color: var(--stop);
+}
+
+/* The running check pulses so a long check reads as working, not stuck. */
+.checks li.busy .mark {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.checks li.busy .mark::before {
+  content: "·";
+  font-size: 1.1rem;
+  line-height: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .checks li.busy .mark {
+    animation: pulse 0.7s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+}
+
+.gate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--deck);
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--ink);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.confirm input {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: none;
+  margin: 0;
+  accent-color: var(--signal);
+  cursor: pointer;
 }
 
 /* ---------- the recovery console ---------- */
+/* Deliberately off the app's palette: this mirrors a real Linux text console. */
 
 .console {
-  margin-top: 0.5rem;
-  padding: 1.6rem 1.9rem 1.8rem;
-  border: 1px solid #1b231e;
-  border-radius: 10px;
-  background: #050706;
-  font-family: "Ubuntu Mono", monospace;
-  font-size: 0.9rem;
-  line-height: 1.8;
-  color: #aebdb2;
-  min-height: 13.5rem;
+  width: min(58rem, 100%);
+  padding: 1.5rem 1.8rem 1.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: #040505;
+  box-shadow: inset 0 0 90px rgb(63 224 129 / 0.03);
+  font-family: "Ubuntu Mono", var(--mono);
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #a9b6ad;
+  min-height: 15rem;
   overflow-x: auto;
 }
 
 .console .dim {
-  color: #5c6a61;
+  color: #566157;
 }
 
 .console .lit {
-  color: #edf4ee;
+  color: #eef3ee;
   font-weight: 700;
 }
 
 .console .grn {
-  color: var(--mint);
+  color: #3fe081;
 }
 
 .console .amb {
-  color: var(--warn);
+  color: #e0a33e;
 }
 
 .console .bar-line {
@@ -579,97 +1148,342 @@ button.danger:hover {
 
 .console hr {
   border: none;
-  border-top: 1px solid #161d18;
-  margin: 0.7rem 0;
+  border-top: 1px solid #141a15;
+  margin: 0.6rem 0;
 }
 
-.console-controls {
-  justify-content: center;
-}
-
-.console-controls button:first-child:not(:only-child) {
-  margin-right: 0;
-}
-
-/* ---------- done screen ---------- */
+/* ---------- done ---------- */
 
 .done-head {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.7rem;
 }
 
-.done-head h2 {
-  margin: 0;
-}
-
-.done-badge {
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--mint-dim);
+.verified {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border: 1px solid rgb(95 211 141 / 0.45);
   border-radius: 50%;
-  background: rgb(91 227 169 / 0.12);
-  color: var(--mint);
+  background: rgb(95 211 141 / 0.1);
+  color: var(--verified);
   font-size: 0.95rem;
   font-weight: 700;
-  text-align: center;
-  line-height: 30px;
-  flex: none;
-  box-shadow: 0 0 18px rgb(91 227 169 / 0.25);
 }
 
-.statrow {
+.done-bars {
+  margin-top: 1.25rem;
+}
+
+.stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.7rem;
-  margin-top: 1.2rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 1px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--rule);
+  overflow: hidden;
 }
 
 .stat {
-  padding: 0.7rem 0.9rem;
-  border: 1px solid var(--hair);
-  border-radius: 8px;
-  background: rgb(17 23 19 / 0.5);
+  padding: 1rem 1.1rem;
+  background: var(--deck);
 }
 
-.stat .s-val {
-  font-family: "Ubuntu Mono", monospace;
-  font-size: 1.05rem;
-  font-weight: 700;
+.s-val {
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: var(--mint);
+  letter-spacing: -0.03em;
+  color: var(--ink);
 }
 
-.stat .s-key {
-  margin-top: 0.1rem;
+.s-key {
+  margin-top: 0.15rem;
   color: var(--faint);
-  font-size: 0.75rem;
+  font-size: 0.76rem;
 }
 
-@media (max-width: 720px) {
-  .statrow {
-    grid-template-columns: repeat(2, 1fr);
+/* ---------- readout ---------- */
+
+.readout h2 {
+  margin: 0 0 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.readout h2 + .rblock {
+  margin-top: 0;
+}
+
+.rblock {
+  margin-top: 1.4rem;
+}
+
+.rfact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.32rem 0;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.78rem;
+}
+
+.rfact:last-child {
+  border-bottom: none;
+}
+
+.rfact .k {
+  color: var(--faint);
+}
+
+.rfact .v {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  text-align: right;
+}
+
+.rfact .v.up {
+  color: var(--signal);
+}
+
+.rfact .v.good {
+  color: var(--verified);
+}
+
+.rtitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.rtitle .sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+  background: var(--unknown);
+}
+
+.rtitle .sw.content-ntfs {
+  background: var(--ntfs);
+}
+.rtitle .sw.content-ext4 {
+  background: var(--ext4);
+}
+.rtitle .sw.content-btrfs {
+  background: var(--btrfs);
+}
+.rtitle .sw.content-xfs {
+  background: var(--xfs);
+}
+.rtitle .sw.content-swap {
+  background: var(--swap);
+}
+.rtitle .sw.content-efisystem,
+.rtitle .sw.content-bitlocker {
+  background: var(--system);
+}
+
+.rtext {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.rtext + .rtext {
+  margin-top: 0.6rem;
+}
+
+/* Used-space meter in the readout. */
+.meter {
+  height: 6px;
+  margin: 0.55rem 0 0.35rem;
+  border-radius: 3px;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  background: var(--signal);
+}
+
+/* ---------- buttons and the action bar ---------- */
+
+button {
+  padding: 0.48rem 1.05rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--deck-high);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: #3a3a44;
+  background: #24242b;
+}
+
+button:disabled {
+  color: var(--faint);
+  background: var(--deck);
+  border-color: var(--rule-soft);
+  cursor: default;
+}
+
+button.go {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--signal-ink);
+  font-weight: 600;
+}
+
+button.go:hover:not(:disabled) {
+  border-color: #ffc352;
+  background: #ffc352;
+}
+
+button.go:disabled {
+  border-color: var(--rule-soft);
+  background: var(--deck);
+  color: var(--faint);
+}
+
+button.stop {
+  border-color: rgb(255 95 86 / 0.45);
+  background: transparent;
+  color: var(--stop);
+}
+
+button.stop:hover:not(:disabled) {
+  border-color: var(--stop);
+  background: rgb(255 95 86 / 0.1);
+}
+
+.status {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  color: var(--dim);
+  font-size: 0.82rem;
+}
+
+.acts {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.acts[hidden] {
+  display: none;
+}
+
+/* ---------- narrow windows ---------- */
+
+@media (max-width: 1180px) {
+  .app {
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    grid-template-areas:
+      "rail work"
+      "rail readout"
+      "rail bar";
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+
+  .readout {
+    border-left: none;
+    border-top: 1px solid var(--rule);
+    padding: 1rem 2.25rem;
   }
 }
 
-#status {
-  margin-top: 1.2rem;
-  color: var(--muted);
-  font-size: 0.9rem;
+@media (max-width: 820px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "rail"
+      "work"
+      "readout"
+      "bar";
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .rail {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.5rem 1rem;
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .brand,
+  .rail-foot {
+    padding: 0;
+    border: none;
+  }
+
+  .stepper {
+    flex-direction: row;
+    padding: 0;
+    gap: 0.2rem;
+  }
+
+  .step + .step::before {
+    display: none;
+  }
+
+  .step-name {
+    display: none;
+  }
+
+  .work,
+  .actionbar,
+  .readout {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .demo-badge {
+    display: none;
+  }
+
+  h1 {
+    font-size: 1.35rem;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .screen {
-    animation: screen-in 0.25s ease;
+    animation: rise 0.2s ease both;
   }
-  @keyframes screen-in {
+  @keyframes rise {
     from {
       opacity: 0;
-      transform: translateY(6px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
+      transform: translateY(5px);
     }
   }
 }

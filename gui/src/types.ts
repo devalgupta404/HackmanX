@@ -43,6 +43,13 @@ export interface Layout {
 /** Where each partition should end up, keyed by its unique GUID. */
 export type Target = Record<Guid, Extent>;
 
+/** One named preflight check, as the checks screen lists it. */
+export interface CheckResult {
+  name: string;
+  detail: string;
+  passed: boolean;
+}
+
 export interface Refusal {
   reason: string;
   fix: string;
