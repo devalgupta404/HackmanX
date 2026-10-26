@@ -43,6 +43,10 @@ enum Command {
         disk: PathBuf,
         /// The saved kernel options, such as "bootshift.disk=… bootshift.journal=…".
         options: String,
+        /// Copy past unreadable source blocks, writing zeros in their place. Only the listed
+        /// blocks are lost; everything else is still verified.
+        #[arg(long)]
+        accept_unreadable: bool,
     },
 }
 
@@ -64,6 +68,10 @@ fn main() -> anyhow::Result<()> {
             yes,
             init,
         } => commands::apply(&disk, &target, yes, init),
-        Command::Resume { disk, options } => recover::resume(&disk, &options),
+        Command::Resume {
+            disk,
+            options,
+            accept_unreadable,
+        } => recover::resume(&disk, &options, accept_unreadable),
     }
 }

@@ -19,7 +19,7 @@ use bootshift_core::scope::CopyScope;
 use bootshift_disk::{BlockDevice, DiskError, GptError, GptImage, Journal, JournalError};
 use bootshift_fs::run::RunError;
 
-use crate::copier::{CopyError, CopyOptions, MoveJob, move_range, verify_move};
+use crate::copier::{CopyError, CopyOptions, MoveJob, ProgressSink, move_range_with, verify_move};
 use crate::ntfs_boot::fix_hidden_sectors;
 use crate::run_plan::RunPlan;
 
@@ -73,6 +73,7 @@ pub fn execute<D: BlockDevice + ?Sized, F: Filesystems>(
     run: &RunPlan,
     resume_from: Option<Progress>,
     options: &CopyOptions,
+    sink: &mut dyn ProgressSink,
 ) -> Result<(), ExecError> {
     let mut executor = Executor {
         disk,
@@ -82,6 +83,7 @@ pub fn execute<D: BlockDevice + ?Sized, F: Filesystems>(
         layouts: layouts_after_each_operation(run)?,
         removable: removed_swaps(run),
         options,
+        sink,
     };
     let mut progress = resume_from.unwrap_or_else(|| stage(Stage::Prepared));
     loop {
@@ -108,6 +110,7 @@ struct Executor<'a, D: ?Sized, F> {
     layouts: Vec<Layout>,
     removable: Vec<Guid>,
     options: &'a CopyOptions,
+    sink: &'a mut dyn ProgressSink,
 }
 
 impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
@@ -126,6 +129,11 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
             .operations
             .get(index as usize)
             .ok_or(ExecError::BadProgress(index, done))?;
+        if done == 0 {
+            let count = self.run.plan.operations.len() as u32;
+            let what = self.describe(index, operation);
+            self.sink.operation(index + 1, count, &what);
+        }
         let next_operation = step(index + 1, 0);
 
         let next = match (operation, done) {
@@ -155,12 +163,13 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
                     len: len.0 * sector_size,
                     scope,
                 };
-                let outcome = move_range(
+                let outcome = move_range_with(
                     self.disk,
                     self.journal,
                     job.clone(),
                     progress,
                     self.options.clone(),
+                    self.sink,
                 )?;
                 if verify_move(self.disk, job, self.options)? != outcome.hash_chain {
                     return Err(ExecError::VerifyFailed(index));
@@ -281,6 +290,22 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
 
     fn sector_size(&self) -> u32 {
         self.run.layout.geometry.sector_size
+    }
+
+    /// The operation in plain words, for the progress sink.
+    fn describe(&self, index: u32, operation: &Operation) -> String {
+        let name = self
+            .layouts
+            .get(index as usize)
+            .and_then(|layout| layout.partition(operation.partition()))
+            .map_or_else(|| operation.partition().to_string(), Partition::label);
+        match operation {
+            Operation::Shrink { .. } => format!("Shrinking {name}"),
+            Operation::Move { .. } => format!("Moving {name}"),
+            Operation::Grow { .. } => format!("Growing {name}"),
+            Operation::RemoveSwap { .. } => format!("Setting aside swap {name}"),
+            Operation::RecreateSwap { .. } => format!("Recreating swap {name}"),
+        }
     }
 }
 

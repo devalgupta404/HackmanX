@@ -14,7 +14,7 @@ use bootshift_fs::mount;
 use bootshift_fs::probe::partition_path;
 use bootshift_fs::run::{RunError, Runner};
 
-use crate::copier::CopyOptions;
+use crate::copier::{CopyOptions, ProgressSink};
 use crate::executor::{ExecError, execute};
 use crate::run_plan::{BootRestore, RunPlan};
 use crate::system_filesystems::SystemFilesystems;
@@ -52,6 +52,8 @@ pub fn run(
     disk_path: &Path,
     args: &RecoveryArgs,
     work_dir: &Path,
+    options: &CopyOptions,
+    sink: &mut dyn ProgressSink,
 ) -> Result<(), RecoveryError> {
     let mut disk = RealDevice::open(disk_path, Access::ReadWriteShared)?;
     let opened = Journal::open(&disk, JournalFile::new(args.journal.clone())?)?;
@@ -77,7 +79,8 @@ pub fn run(
         &mut filesystems,
         &run,
         opened.progress.clone(),
-        &CopyOptions::default(),
+        options,
+        sink,
     )?;
 
     let already_done = opened

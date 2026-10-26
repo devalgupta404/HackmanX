@@ -14,7 +14,7 @@ use bootshift_core::units::{Lba, Sectors};
 use bootshift_disk::{
     BlockDevice, CrashDisk, FileExtent, GptImage, Journal, JournalFile, MemDisk, PendingWrites,
 };
-use bootshift_engine::copier::CopyOptions;
+use bootshift_engine::copier::{CopyOptions, SilentProgress};
 use bootshift_engine::executor::{Filesystems, execute};
 use bootshift_engine::run_plan::{BootRestore, RunPlan};
 use bootshift_fs::run::RunError;
@@ -198,6 +198,7 @@ fn resume<D: BlockDevice>(disk: &mut D) -> FakeFilesystems {
         &run,
         opened.progress,
         &CopyOptions::default(),
+        &mut SilentProgress,
     )
     .unwrap();
     filesystems

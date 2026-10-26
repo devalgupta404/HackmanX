@@ -50,6 +50,23 @@ pub struct ChunkDone {
     pub hash_chain: [u8; 32],
 }
 
+/// Receives progress while data moves: the recovery screen and, later, the GUI. Keep
+/// implementations quick; they run between a chunk's journal commit and the next read.
+pub trait ProgressSink {
+    /// A new operation started, `index` of `count`, described in plain words.
+    fn operation(&mut self, index: u32, count: u32, what: &str);
+    /// `done` of `total` bytes of the current move are copied, verified and journaled.
+    fn copied(&mut self, done: u64, total: u64);
+}
+
+/// Discards progress.
+pub struct SilentProgress;
+
+impl ProgressSink for SilentProgress {
+    fn operation(&mut self, _: u32, _: u32, _: &str) {}
+    fn copied(&mut self, _: u64, _: u64) {}
+}
+
 pub struct MoveOutcome {
     pub hash_chain: [u8; 32],
     /// Source blocks that couldn't be read and were written as zeros.
@@ -67,6 +84,8 @@ pub struct ChunkCopier {
     hash_chain: [u8; 32],
     awaiting_commit: bool,
     unreadable: Vec<u64>,
+    done_bytes: u64,
+    total_bytes: u64,
 }
 
 impl ChunkCopier {
@@ -77,14 +96,27 @@ impl ChunkCopier {
         hash_chain: [u8; 32],
         options: CopyOptions,
     ) -> Result<Self, CopyError> {
+        let plan = ChunkPlan::new(job, block_size, options.max_chunk)?;
+        let bytes_in = |range: std::ops::Range<u64>| {
+            range.map(|index| total_len(&plan.pieces(index)) as u64).sum()
+        };
+        let done_bytes = bytes_in(0..next_chunk.min(plan.chunk_count()));
+        let total_bytes = done_bytes + bytes_in(next_chunk.min(plan.chunk_count())..plan.chunk_count());
         Ok(Self {
-            plan: ChunkPlan::new(job, block_size, options.max_chunk)?,
+            plan,
             options,
             next_chunk,
             hash_chain,
             awaiting_commit: false,
             unreadable: Vec::new(),
+            done_bytes,
+            total_bytes,
         })
+    }
+
+    /// Bytes of data copied so far, and in total, for this move.
+    pub fn progress(&self) -> (u64, u64) {
+        (self.done_bytes, self.total_bytes)
     }
 
     /// Copies, flushes and verifies the next chunk that holds data. Returns `None` once every
@@ -111,6 +143,7 @@ impl ChunkCopier {
 
             self.hash_chain = extend_chain(self.hash_chain, index, &data);
             self.next_chunk = index + 1;
+            self.done_bytes += data.len() as u64;
             self.awaiting_commit = true;
             return Ok(Some(ChunkDone {
                 next_chunk: self.next_chunk,
@@ -195,6 +228,18 @@ pub fn move_range<D: BlockDevice + ?Sized>(
     start: &Progress,
     options: CopyOptions,
 ) -> Result<MoveOutcome, CopyError> {
+    move_range_with(device, journal, job, start, options, &mut SilentProgress)
+}
+
+/// [`move_range`], reporting each committed chunk to `sink`.
+pub fn move_range_with<D: BlockDevice + ?Sized>(
+    device: &mut D,
+    journal: &mut Journal,
+    job: MoveJob,
+    start: &Progress,
+    options: CopyOptions,
+    sink: &mut dyn ProgressSink,
+) -> Result<MoveOutcome, CopyError> {
     let block_size = device.logical_block_size();
     let mut copier =
         ChunkCopier::resume(job, block_size, start.next_chunk, start.hash_chain, options)?;
@@ -206,6 +251,8 @@ pub fn move_range<D: BlockDevice + ?Sized>(
         };
         journal.commit(device, &progress)?;
         copier.acknowledge(done);
+        let (done_bytes, total_bytes) = copier.progress();
+        sink.copied(done_bytes, total_bytes);
     }
     Ok(MoveOutcome {
         hash_chain: copier.hash_chain,
