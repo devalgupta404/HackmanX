@@ -6,9 +6,13 @@ members = ["crates/*", "xtask"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/devalgupta404/HackmanX"
+publish = false
 
 [workspace.dependencies]
+thiserror = "2.0"
+
 bootshift-core = { path = "crates/core" }
 bootshift-disk = { path = "crates/disk" }
 bootshift-fs = { path = "crates/fs" }
@@ -21,6 +25,7 @@ unsafe_code = "deny"
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+panic = "deny"
 
 [profile.release]
 lto = true

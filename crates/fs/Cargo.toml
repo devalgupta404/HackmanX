@@ -4,6 +4,8 @@ description = "Filesystem adapters that drive e2fsprogs, ntfs-3g, btrfs-progs an
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
 repository.workspace = true
 
 [dependencies]
