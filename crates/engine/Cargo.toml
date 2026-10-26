@@ -14,6 +14,7 @@ bootshift-disk.workspace = true
 bootshift-fs.workspace = true
 bootshift-boot.workspace = true
 blake3.workspace = true
+rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

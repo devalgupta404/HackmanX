@@ -96,6 +96,7 @@ dependencies = [
  "bootshift-fs",
  "gptman",
  "proptest",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

@@ -6,4 +6,5 @@ pub mod ntfs;
 mod parse;
 pub mod probe;
 pub mod run;
+pub mod smart;
 pub mod swap;

@@ -346,19 +346,15 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 9 — Preflight checks
 
-- [ ] **9.1** `engine::preflight`: each check returns `Pass` or `Refuse { reason, fix }`.
-  - SMART is healthy.
-  - On AC power, with the battery above 50%.
-  - Target disk is not USB.
-  - GPT + UEFI.
-  - No BitLocker.
-  - No hibernation or Fast Startup; no hibernation image in swap.
-  - Filesystems are clean (read-only checks).
-  - ESP has enough free space.
-  - Running kernel's modules are present.
-  - Bootloader is supported.
-  - Shrink sizes leave a margin over used space.
-- [ ] **9.2** Each check has a unit test for pass and for refuse, using captured tool output.
+- [x] **9.1** `engine::preflight::evaluate(facts, layout)`: pure; returns every refusal at once, each with a reason and a fix. Anything unknown counts as a refusal.
+  - UEFI, GPT, not USB.
+  - On mains with the battery ≥ 50% (desktops without a battery pass; an undetectable charger is refused).
+  - SMART passed (`Unknown` refused).
+  - Kernel modules present, ESP space ≥ needed (unknown refused), bootloader supported.
+  - No hibernated swap, no BitLocker anywhere on the disk, no filesystem problems.
+  - `engine::facts` gathers them: sysfs power (USB-C counts as mains), UEFI, `/lib/modules/<release>`, `statvfs` on the ESP, `fs::smart::health` (`smartctl --json --health`), `filesystem_problems` (`tune2fs -l` / `ntfsresize --info` on changed partitions only) and `has_hibernated_swap`.
+  - The bootloader fact comes from the boot crate (Phase 10).
+- [x] **9.2** Pass and refuse tests for each check: ScriptedRunner fixtures for tools, a fake `/sys` tree for power and UEFI.
 
 ### Phase 10 — Boot and recovery
 
