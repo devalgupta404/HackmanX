@@ -242,7 +242,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 
 ### Phase 4 — Receiver
 
-- [ ] **4.1 Journal and hash-index store** on the scratch device (format in `implementation.md` §I4). Includes the decode-old-version test rule.
+- [x] **4.1 Journal and hash-index store** on the scratch device (format in `implementation.md` §I4). Includes the decode-old-version test rule.
 - [ ] **4.2 Applier.** Batch write → `fdatasync` → read back with `O_DIRECT` → compare hashes → index entries → flush → journal → acknowledge.
   **Done when** the CrashDisk test covers every write and flush point with dropped, reordered and torn pending writes, and the final target equals the source at freeze.
 - [ ] **4.3 Index service.** Stream the hash index to the sender for compare passes.

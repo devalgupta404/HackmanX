@@ -9,3 +9,10 @@ publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+thiserror.workspace = true
+crc32c.workspace = true
+blake3.workspace = true
+bootshift-disk.workspace = true
+bootshift-migrate-core = { path = "../core" }
