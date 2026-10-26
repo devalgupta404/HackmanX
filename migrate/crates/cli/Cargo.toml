@@ -1,0 +1,20 @@
+[package]
+name = "bootshift-migrate-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "bootshift-migrate"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+bootshift-migrate-core = { path = "../core" }
