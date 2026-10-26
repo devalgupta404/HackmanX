@@ -7,8 +7,12 @@
 //! passthrough write. The one rule a tracker must keep is **fail closed** (invariant M4): if it
 //! can't prove it saw every write, it says so, and the pass becomes a full compare.
 
+#[cfg(feature = "ebpf")]
+pub mod ebpf;
 pub mod sim;
 pub mod tracker;
 
+#[cfg(feature = "ebpf")]
+pub use ebpf::{EbpfError, EbpfTracker};
 pub use sim::SimTracker;
 pub use tracker::{Broken, Drained, Generation, TrackError, Tracker};

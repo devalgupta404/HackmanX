@@ -45,6 +45,10 @@ pub enum TrackError {
         asked: Generation,
         current: Generation,
     },
+    /// A real backend (the eBPF maps) failed in a way draining can't fail closed from, such as the
+    /// generation flip itself. The sim backend never raises this.
+    #[error("tracker backend error: {0}")]
+    Backend(String),
 }
 
 pub trait Tracker {

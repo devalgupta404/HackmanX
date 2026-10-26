@@ -10,6 +10,13 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# The real kernel tracker: a BPF program (built by build.rs with clang) loaded with libbpf-rs.
+# Off by default so the crate builds as pure Rust without clang or libbpf.
+ebpf = ["dep:libbpf-rs", "dep:libbpf-sys"]
+
 [dependencies]
 thiserror.workspace = true
 bootshift-migrate-core = { path = "../core" }
+libbpf-rs = { version = "0.24", default-features = false, optional = true }
+libbpf-sys = { version = "1.7", default-features = false, features = ["vendored-libbpf"], optional = true }
