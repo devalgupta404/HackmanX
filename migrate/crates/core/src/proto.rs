@@ -64,7 +64,8 @@ pub enum Message {
     },
     Chunk {
         pass: u32,
-        target: DiskRange,
+        /// The source range the sender read; the receiver maps it to the target through the layout.
+        source: DiskRange,
         hash: [u8; 32],
         codec: Codec,
         data: Vec<u8>,
@@ -199,7 +200,7 @@ mod tests {
             any::<u64>().prop_map(|e| Message::Surrendered { epoch: e }),
             (any::<u32>(), any::<u64>(), any::<u64>()).prop_map(|(p, o, l)| Message::Chunk {
                 pass: p,
-                target: DiskRange::new(o, o.wrapping_add(l)),
+                source: DiskRange::new(o, o.wrapping_add(l)),
                 hash: [7u8; 32],
                 codec: Codec::Zstd,
                 data: vec![1, 2, 3, 4],

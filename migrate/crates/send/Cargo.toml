@@ -19,3 +19,4 @@ bootshift-migrate-core = { path = "../core" }
 [dev-dependencies]
 bootshift-migrate-testkit = { path = "../testkit" }
 bootshift-migrate-receive = { path = "../receive" }
+bootshift-migrate-net = { path = "../net" }

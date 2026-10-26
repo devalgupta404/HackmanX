@@ -464,10 +464,27 @@ dependencies = [
 [[package]]
 name = "bootshift-migrate-receive"
 version = "0.1.0"
+dependencies = [
+ "blake3",
+ "bootshift-disk",
+ "bootshift-migrate-core",
+ "bootshift-migrate-testkit",
+ "crc32c",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "bootshift-migrate-send"
 version = "0.1.0"
+dependencies = [
+ "blake3",
+ "bootshift-disk",
+ "bootshift-migrate-core",
+ "bootshift-migrate-net",
+ "bootshift-migrate-receive",
+ "bootshift-migrate-testkit",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "bootshift-migrate-testkit"
