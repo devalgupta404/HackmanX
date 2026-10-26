@@ -121,6 +121,18 @@ pub fn parse_signature(text: &str) -> Signature {
     }
 }
 
+/// The device node of partition `number` on `disk`: `/dev/sda3`, or `/dev/nvme0n1p3` when the
+/// disk's name ends in a digit.
+pub fn partition_path(disk: &Path, number: u32) -> PathBuf {
+    let name = disk.as_os_str().to_string_lossy();
+    let separator = if name.ends_with(|c: char| c.is_ascii_digit()) {
+        "p"
+    } else {
+        ""
+    };
+    PathBuf::from(format!("{name}{separator}{number}"))
+}
+
 pub fn find_disk<'a>(disks: &'a [DiskInfo], path: &Path) -> Option<&'a DiskInfo> {
     disks.iter().find(|disk| disk.path == path)
 }
@@ -271,6 +283,22 @@ mod tests {
         let disks = parse_lsblk(DUAL_BOOT).unwrap();
         assert!(!disks[0].is_usb());
         assert!(disks[1].is_usb() && disks[1].removable);
+    }
+
+    #[test]
+    fn partition_paths_follow_the_kernel_naming() {
+        assert_eq!(
+            partition_path(Path::new("/dev/sda"), 3),
+            Path::new("/dev/sda3")
+        );
+        assert_eq!(
+            partition_path(Path::new("/dev/nvme0n1"), 3),
+            Path::new("/dev/nvme0n1p3")
+        );
+        assert_eq!(
+            partition_path(Path::new("/dev/mmcblk0"), 1),
+            Path::new("/dev/mmcblk0p1")
+        );
     }
 
     #[test]

@@ -7,3 +7,4 @@ pub mod facts;
 mod ntfs_boot;
 pub mod preflight;
 pub mod run_plan;
+pub mod system_filesystems;

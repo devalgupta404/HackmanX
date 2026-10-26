@@ -2,8 +2,11 @@
 //! be determined counts as a refusal.
 
 use bootshift_core::layout::{Content, Layout};
+use bootshift_core::plan::Operation;
 use bootshift_core::refusal::Refusal;
 use bootshift_fs::smart::Health;
+
+use crate::run_plan::RunPlan;
 
 const MIN_BATTERY_PERCENT: u8 = 50;
 
@@ -122,6 +125,36 @@ pub fn evaluate(facts: &Facts, layout: &Layout) -> Vec<Refusal> {
         );
     }
     refusals.extend(facts.filesystem_problems.iter().cloned());
+    refusals
+}
+
+/// Operations this build can't yet do safely. Shrinking ext4 or NTFS, and growing NTFS, need a
+/// guarded run (task 0.6): the tools that do them can't survive a power cut on their own.
+pub fn unavailable_operations(run: &RunPlan) -> Vec<Refusal> {
+    let mut refusals = Vec::new();
+    for operation in &run.plan.operations {
+        let (partition, action) = match operation {
+            Operation::Shrink { partition, .. } => (*partition, "shrink"),
+            Operation::Grow { partition, .. } => (*partition, "grow"),
+            _ => continue,
+        };
+        let Some(partition) = run.layout.partition(partition) else {
+            continue;
+        };
+        let needs_guard = matches!(
+            (action, partition.content),
+            ("shrink", Content::Ext4 | Content::Ntfs) | ("grow", Content::Ntfs)
+        );
+        if needs_guard {
+            refusals.push(Refusal::new(
+                format!(
+                    "This version of BootShift can't yet {action} {} safely.",
+                    partition.label()
+                ),
+                format!("Keep {} at its current size for now.", partition.label()),
+            ));
+        }
+    }
     refusals
 }
 
@@ -287,6 +320,47 @@ mod tests {
             ..good_facts()
         };
         assert_eq!(reasons(&facts).len(), 8);
+    }
+
+    fn run_with(content: Content, operation: Operation) -> RunPlan {
+        RunPlan {
+            layout: layout_with(content),
+            plan: bootshift_core::plan::Plan {
+                operations: vec![operation],
+            },
+            swaps: Default::default(),
+            boot: crate::run_plan::BootRestore {
+                esp_partition: 1,
+                grub_vendor: "ubuntu".to_string(),
+                original_boot_order: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn shrinking_ext4_or_ntfs_and_growing_ntfs_wait_for_guarded_runs() {
+        let shrink = Operation::Shrink {
+            partition: Guid([1; 16]),
+            len: Sectors(1024),
+        };
+        let grow = Operation::Grow {
+            partition: Guid([1; 16]),
+            len: Sectors(4096),
+        };
+        assert_eq!(
+            unavailable_operations(&run_with(Content::Ext4, shrink.clone())).len(),
+            1
+        );
+        assert_eq!(
+            unavailable_operations(&run_with(Content::Ntfs, shrink.clone())).len(),
+            1
+        );
+        assert_eq!(
+            unavailable_operations(&run_with(Content::Ntfs, grow.clone())).len(),
+            1
+        );
+        assert!(unavailable_operations(&run_with(Content::Ext4, grow)).is_empty());
+        assert!(unavailable_operations(&run_with(Content::Btrfs, shrink)).is_empty());
     }
 
     #[test]

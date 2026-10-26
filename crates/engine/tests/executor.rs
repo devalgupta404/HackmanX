@@ -16,7 +16,7 @@ use bootshift_disk::{
 };
 use bootshift_engine::copier::CopyOptions;
 use bootshift_engine::executor::{Filesystems, execute};
-use bootshift_engine::run_plan::RunPlan;
+use bootshift_engine::run_plan::{BootRestore, RunPlan};
 use bootshift_fs::run::RunError;
 use gptman::{GPT, GPTPartitionEntry};
 
@@ -103,7 +103,16 @@ fn journal_file() -> JournalFile {
 fn run_plan() -> RunPlan {
     let layout = layout();
     let plan = plan(&layout, &target(&layout)).unwrap();
-    RunPlan { layout, plan }
+    RunPlan {
+        layout,
+        plan,
+        swaps: BTreeMap::new(),
+        boot: BootRestore {
+            esp_partition: 1,
+            grub_vendor: "ubuntu".to_string(),
+            original_boot_order: vec![0, 1],
+        },
+    }
 }
 
 fn fresh_disk(run: &RunPlan) -> MemDisk {
@@ -141,7 +150,7 @@ struct FakeFilesystems {
 }
 
 impl Filesystems for FakeFilesystems {
-    fn used_ranges(&mut self, partition: &Partition) -> Result<CopyScope, RunError> {
+    fn used_ranges(&mut self, partition: &Partition, _: bool) -> Result<CopyScope, RunError> {
         self.calls.push(format!("used {}", partition.number));
         let len = partition.extent.len.0 * SECTOR;
         Ok(CopyScope::UsedOnly(vec![0..len / 2]))
@@ -165,8 +174,10 @@ impl Filesystems for FakeFilesystems {
         ));
         Ok(())
     }
-    fn check(&mut self, partition: &Partition) -> Result<(), RunError> {
-        self.calls.push(format!("check {}", partition.number));
+    fn check(&mut self, partition: &Partition, resized_by_us: bool) -> Result<(), RunError> {
+        let resized = if resized_by_us { " (resized)" } else { "" };
+        self.calls
+            .push(format!("check {}{resized}", partition.number));
         Ok(())
     }
     fn refresh_kernel_view(&mut self) -> Result<(), RunError> {
@@ -257,8 +268,8 @@ fn runs_a_whole_plan_and_calls_each_tool_in_order() {
             "used 3",
             "grow 3 to 96",
             "mkswap 4 at 10640",
-            "check 2",
-            "check 3",
+            "check 2 (resized)",
+            "check 3 (resized)",
         ]
     );
 }
