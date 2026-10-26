@@ -127,11 +127,13 @@ fn main() -> anyhow::Result<()> {
     let helper = Helper {
         recovery_binary: PathBuf::from(RECOVERY_BINARY),
     };
-    let _connection = zbus::blocking::connection::Builder::system()?
-        .name(BUS_NAME)?
-        .serve_at(OBJECT_PATH, helper)?
-        .build()?;
-    loop {
-        std::thread::park();
-    }
+    zbus::block_on(async {
+        let _connection = zbus::connection::Builder::system()
+            .name(BUS_NAME)
+            .serve_at(OBJECT_PATH, helper)
+            .build()
+            .await?;
+        std::future::pending::<()>().await;
+        Ok::<(), anyhow::Error>(())
+    })
 }
