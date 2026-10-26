@@ -124,7 +124,7 @@ fn moving_a_partition_rewrites_both_copies_and_keeps_everything_else() {
     let target = original
         .with_partitions(&moved(partitions(&original), 3, 12), &[])
         .unwrap();
-    target.write_over(&mut disk, &original).unwrap();
+    target.write(&mut disk).unwrap();
 
     let expected = vec![
         (MIB, 3 * MIB - 1),
@@ -242,19 +242,16 @@ fn reads_the_backup_when_the_primary_is_damaged() {
 fn every_crash_while_writing_leaves_a_readable_table_and_resuming_completes_it() {
     let disk = disk();
     let original = GptImage::read(&disk).unwrap();
-    let target = original
-        .with_partitions(&moved(partitions(&original), 3, 12), &[])
-        .unwrap();
+    let target_partitions = moved(partitions(&original), 3, 12);
+    let target = original.with_partitions(&target_partitions, &[]).unwrap();
     let old_entries = original.entries().unwrap();
     let new_entries = target.entries().unwrap();
-    let new_extents = both_copies(&{
-        let mut finished = disk.clone();
-        target.write_over(&mut finished, &original).unwrap();
-        finished
-    });
+    let mut finished = disk.clone();
+    target.write(&mut finished).unwrap();
+    let new_extents = both_copies(&finished);
 
     let mut recorded = CrashDisk::new(disk);
-    target.write_over(&mut recorded, &original).unwrap();
+    target.write(&mut recorded).unwrap();
 
     let outcomes = [PendingWrites::Lost, PendingWrites::AllLanded]
         .into_iter()
@@ -262,17 +259,23 @@ fn every_crash_while_writing_leaves_a_readable_table_and_resuming_completes_it()
     for outcome in outcomes {
         for point in recorded.crash_points() {
             let mut image = recorded.crash_image(point, outcome);
-            let read = GptImage::read(&image).unwrap().entries().unwrap();
+            let survivor = GptImage::read(&image).unwrap();
+            let read = survivor.entries().unwrap();
             assert!(
                 read == old_entries || read == new_entries,
                 "point {point}, {outcome:?}: table is neither old nor new"
             );
 
-            target.write_over(&mut image, &original).unwrap();
+            let rebuilt = survivor.with_partitions(&target_partitions, &[]).unwrap();
+            rebuilt.write(&mut image).unwrap();
             assert_eq!(
                 both_copies(&image),
                 new_extents,
                 "point {point}, {outcome:?}"
+            );
+            assert_eq!(
+                image.bytes()[..SECTOR as usize],
+                finished.bytes()[..SECTOR as usize]
             );
         }
     }

@@ -32,8 +32,6 @@ pub enum GptError {
     SlotUnavailable(u32),
     #[error("partition {0} has no space")]
     EmptyPartition(Guid),
-    #[error("the new table doesn't belong to the same disk as the old one")]
-    DifferentDisk,
 }
 
 /// One used entry of the table.
@@ -184,33 +182,42 @@ impl GptImage {
         Ok(image)
     }
 
-    /// Writes this table over `previous`, the table it was derived from: first the changed
-    /// sectors of the backup copy, then a flush, then the changed sectors of the primary copy,
-    /// then a flush. At every moment at least one copy is complete, and sectors that don't
-    /// change (such as the protective MBR) are never written.
-    pub fn write_over<D: BlockDevice + ?Sized>(
-        &self,
-        device: &mut D,
-        previous: &GptImage,
-    ) -> Result<(), GptError> {
-        let same_disk = self.sector_size == previous.sector_size
-            && self.disk_len == previous.disk_len
-            && self.tail_offset == previous.tail_offset
-            && self.head.len() == previous.head.len()
-            && self.tail.len() == previous.tail.len();
-        if !same_disk {
-            return Err(GptError::DifferentDisk);
-        }
-
-        for run in changed_sectors(&self.tail, &previous.tail, self.sector_size) {
-            device.write_at(self.tail_offset + run.start as u64, &self.tail[run])?;
-        }
+    /// Writes both copies of a table made by [`GptImage::with_partitions`]: the backup copy,
+    /// a flush, then the primary entries and header, and a flush. At every moment at least one
+    /// copy is complete. Only the table's own sectors are written, never the protective MBR or
+    /// the gap before the first partition.
+    ///
+    /// Rebuilding the same layout from whichever copy a crash left valid, old or new, gives the
+    /// same table, so a torn write is resumed by simply doing it again.
+    pub fn write<D: BlockDevice + ?Sized>(&self, device: &mut D) -> Result<(), GptError> {
+        device.write_at(self.tail_offset, &self.tail)?;
         device.flush()?;
-        for run in changed_sectors(&self.head, &previous.head, self.sector_size) {
-            device.write_at(run.start as u64, &self.head[run])?;
+        for range in self.primary_ranges()? {
+            device.write_at(range.start as u64, &self.head[range])?;
         }
         device.flush()?;
         Ok(())
+    }
+
+    /// The primary entry array and header, as byte ranges of the head region.
+    fn primary_ranges(&self) -> Result<[Range<usize>; 2], GptError> {
+        let sector = self.sector_size;
+        let header_bytes = self
+            .head
+            .get(sector as usize..2 * sector as usize)
+            .ok_or(GptError::BadGeometry)?;
+        let header = GPTHeader::read_from(&mut Cursor::new(header_bytes))?;
+        let entries_start = header.partition_entry_lba * sector;
+        let entries_len = u64::from(header.number_of_partition_entries)
+            * u64::from(header.size_of_partition_entry);
+        let entries_end = (entries_start + entries_len).next_multiple_of(sector);
+        if entries_start < 2 * sector || entries_end > self.head.len() as u64 {
+            return Err(GptError::BadGeometry);
+        }
+        Ok([
+            entries_start as usize..entries_end as usize,
+            sector as usize..2 * sector as usize,
+        ])
     }
 
     fn parse(&self) -> Result<GPT, GptError> {
@@ -249,24 +256,6 @@ fn set_extent(entry: &mut GPTPartitionEntry, partition: &Partition) -> Result<()
     entry.starting_lba = start.0;
     entry.ending_lba = start.0 + (len.0 - 1);
     Ok(())
-}
-
-/// Byte ranges of whole sectors that differ, with neighbouring sectors merged.
-fn changed_sectors(new: &[u8], old: &[u8], sector_size: u64) -> Vec<Range<usize>> {
-    let sector = sector_size as usize;
-    let mut runs: Vec<Range<usize>> = Vec::new();
-    for (index, (new_sector, old_sector)) in new.chunks(sector).zip(old.chunks(sector)).enumerate()
-    {
-        if new_sector == old_sector {
-            continue;
-        }
-        let start = index * sector;
-        match runs.last_mut() {
-            Some(run) if run.end == start => run.end += sector,
-            _ => runs.push(start..start + sector),
-        }
-    }
-    runs
 }
 
 /// A whole-disk view for `gptman`: the GPT regions are real, the space between reads as zeros
@@ -350,20 +339,5 @@ impl Seek for SparseImage<'_> {
         };
         self.position = position.ok_or_else(invalid)?;
         Ok(self.position)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn changed_sectors_merges_neighbours() {
-        let old = vec![0; 2048];
-        let mut new = old.clone();
-        new[10] = 1;
-        new[600] = 1;
-        new[1600] = 1;
-        assert_eq!(changed_sectors(&new, &old, 512), vec![0..1024, 1536..2048]);
     }
 }
