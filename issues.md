@@ -23,9 +23,15 @@ it. Remove an issue in the same change that fixes it.
 
 ## Degraded behaviour
 
-- **I-04 The desktop app does not exist.** `gui/src-tauri` is absent; `chooseBackend()` can
-  only ever take the demo branch, so the GUI has never talked to `bootshiftd`, and the helper
-  has never been called by anything but its own smoke test. Task 13.5.
+- **I-04 The desktop app has never talked to a live helper.** `bootshift-gui` (`crates/gui`)
+  has a zbus client for `org.bootshift.Helper1`, but it has only run against the demo backend;
+  nothing has called a running `bootshiftd` yet. `gui/src-tauri` is still absent. Tasks 13.5,
+  13.6.
+- **I-17 The helper's `Check` doesn't list its checks.** It answers `null` when every check
+  passes, while the GUI's contract (`UI-HANDOFF.md` section 16) is one row per check. The app
+  then shows no rows and keeps apply locked, which is safe but means apply can never be
+  reached against the real helper. `Check` should return the rows from
+  `engine::preflight::evaluate`. Task 13.6.
 - **I-05 No progress reporting.** `move_range` has no observer hook, and the recovery screen
   is two `eprintln` lines followed by silence for the whole copy. Neither recovery nor a future
   GUI can show percent or time left without one. Task 10.3 (needs a `ProgressSink` trait in the
