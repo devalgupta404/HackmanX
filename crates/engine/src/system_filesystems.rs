@@ -84,6 +84,22 @@ impl Filesystems for SystemFilesystems<'_> {
                 let used = ntfs::used_ranges(self.runner, &device, &info, dirty)?;
                 Ok(CopyScope::used_only(len, used))
             }
+            Content::Btrfs => {
+                btrfs::check(self.runner, &device)?;
+                match btrfs::used_ranges(self.runner, &device)? {
+                    Some(used) => Ok(CopyScope::used_only(len, used)),
+                    // The filesystem spans more devices; only a full copy is safe.
+                    None => Ok(CopyScope::Everything),
+                }
+            }
+            Content::Xfs => {
+                xfs::check(self.runner, &device)?;
+                match xfs::used_ranges(self.runner, &device)? {
+                    Some(used) => Ok(CopyScope::used_only(len, used)),
+                    // A realtime device or an external log; only a full copy is safe.
+                    None => Ok(CopyScope::Everything),
+                }
+            }
             _ => Ok(CopyScope::Everything),
         }
     }

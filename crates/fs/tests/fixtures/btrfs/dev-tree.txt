@@ -1,0 +1,37 @@
+btrfs-progs v5.4.1 
+device tree key (DEV_TREE ROOT_ITEM 0) 
+leaf 30572544 items 7 free space 15772 generation 6 owner DEV_TREE
+leaf 30572544 flags 0x1(WRITTEN) backref revision 1
+fs uuid 42168cd4-bab1-45f1-882a-cf96402e8aed
+chunk uuid 1960c5b4-51d6-421f-882f-23e29ba68461
+	item 0 key (1 DEV_EXTENT 1048576) itemoff 16235 itemsize 48
+		dev extent chunk_tree 3
+		chunk_objectid 256 chunk_offset 63963136 length 8388608
+		chunk_tree_uuid 1960c5b4-51d6-421f-882f-23e29ba68461
+	item 1 key (1 DEV_EXTENT 13631488) itemoff 16187 itemsize 48
+		dev extent chunk_tree 3
+		chunk_objectid 256 chunk_offset 13631488 length 8388608
+		chunk_tree_uuid 1960c5b4-51d6-421f-882f-23e29ba68461
+	item 2 key (1 DEV_EXTENT 22020096) itemoff 16139 itemsize 48
+		dev extent chunk_tree 3
+		chunk_objectid 256 chunk_offset 22020096 length 8388608
+		chunk_tree_uuid 1960c5b4-51d6-421f-882f-23e29ba68461
+	item 3 key (1 DEV_EXTENT 30408704) itemoff 16091 itemsize 48
+		dev extent chunk_tree 3
+		chunk_objectid 256 chunk_offset 22020096 length 8388608
+		chunk_tree_uuid 1960c5b4-51d6-421f-882f-23e29ba68461
+	item 4 key (1 DEV_EXTENT 38797312) itemoff 16043 itemsize 48
+		dev extent chunk_tree 3
+		chunk_objectid 256 chunk_offset 30408704 length 33554432
+		chunk_tree_uuid 1960c5b4-51d6-421f-882f-23e29ba68461
+	item 5 key (1 DEV_EXTENT 72351744) itemoff 15995 itemsize 48
+		dev extent chunk_tree 3
+		chunk_objectid 256 chunk_offset 30408704 length 33554432
+		chunk_tree_uuid 1960c5b4-51d6-421f-882f-23e29ba68461
+	item 6 key (1 DEV_EXTENT 105906176) itemoff 15947 itemsize 48
+		dev extent chunk_tree 3
+		chunk_objectid 256 chunk_offset 72351744 length 8388608
+		chunk_tree_uuid 1960c5b4-51d6-421f-882f-23e29ba68461
+total bytes 268435456
+bytes used 10616832
+uuid 42168cd4-bab1-45f1-882a-cf96402e8aed

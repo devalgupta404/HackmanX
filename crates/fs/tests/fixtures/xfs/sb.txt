@@ -1,0 +1,5 @@
+dblocks = 131072
+blocksize = 4096
+agblocks = 32768
+logstart = 65542
+rbmblocks = 0
