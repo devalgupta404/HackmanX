@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 mod common;
+mod finalize;
 mod receive;
 mod send;
 
@@ -100,11 +101,20 @@ enum Command {
         #[arg(long)]
         target: Option<PathBuf>,
     },
-    /// Lay out, grow, adapt and boot the target from a committed run.
+    /// Lay out, grow and adapt the target from a committed run.
     Finalize {
-        /// Restore the guest changes recorded in the undo log.
+        /// The migrated target disk to finalize.
         #[arg(long)]
-        undo_adapt: bool,
+        data: PathBuf,
+        /// Grow the last partition and its filesystem to fill the (larger) target disk.
+        #[arg(long)]
+        grow_last: bool,
+        /// Adapt the guest's /etc/fstab at this mounted root for its new device names.
+        #[arg(long)]
+        adapt_root: Option<String>,
+        /// A device rename to apply when adapting, old=new (repeatable), e.g. /dev/sda2=/dev/vda2.
+        #[arg(long = "rename", value_name = "OLD=NEW")]
+        renames: Vec<String>,
     },
 }
 
@@ -145,8 +155,28 @@ fn main() -> anyhow::Result<()> {
         Command::Rollback => not_implemented("rollback"),
         Command::Verify => not_implemented("verify"),
         Command::VerifyReceipt { .. } => not_implemented("verify-receipt"),
-        Command::Finalize { .. } => not_implemented("finalize"),
+        Command::Finalize {
+            data,
+            grow_last,
+            adapt_root,
+            renames,
+        } => {
+            let parsed = parse_renames(&renames)?;
+            finalize::run(&data, grow_last, adapt_root.as_deref(), &parsed)
+        }
     }
+}
+
+/// Parses `old=new` device-rename arguments.
+fn parse_renames(renames: &[String]) -> anyhow::Result<Vec<(String, String)>> {
+    renames
+        .iter()
+        .map(|spec| {
+            spec.split_once('=')
+                .map(|(from, to)| (from.to_string(), to.to_string()))
+                .ok_or_else(|| anyhow::anyhow!("--rename expects OLD=NEW, got `{spec}`"))
+        })
+        .collect()
 }
 
 #[cfg(feature = "ebpf")]

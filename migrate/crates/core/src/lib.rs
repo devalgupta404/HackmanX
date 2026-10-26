@@ -6,6 +6,7 @@
 //! See `migrate/plan.md`, `architecture.md` and `implementation.md` for the design these
 //! implement; invariants are referenced as M1–M11.
 
+pub mod adapt;
 pub mod converge;
 pub mod cutover;
 pub mod dirty;
@@ -14,6 +15,7 @@ pub mod proto;
 pub mod receipt;
 pub mod units;
 
+pub use adapt::{Adapted, DeviceRewrite, rewrite_fstab, rewrite_grub};
 pub use converge::{Advice, ConvergenceModel, PassKind, PassStats};
 pub use cutover::{Fence, ReceiverState, SenderState};
 pub use dirty::DirtySet;
