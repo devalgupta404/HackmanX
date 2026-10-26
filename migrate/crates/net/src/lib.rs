@@ -1,5 +1,10 @@
-//! Transport for BootShift Migrate: length-prefixed framing over a TLS 1.3 byte stream, SPAKE2
-//! pairing from a 6-word code, reconnect and back-pressure. The `FaultyLink` test transport lives
-//! here too. Built out in plan.md Phase 1/3 (§I3).
+//! Transport for BootShift Migrate: the [`Link`] trait the sender and receiver talk over, and the
+//! in-memory [`FaultyLink`] that stands in for it in tests, able to drop, duplicate and cut frames
+//! and reconnect — the faults a real TLS-over-TCP link suffers (plan.md task 2.3, §I3).
 //!
-//! Skeleton: types land as the protocol (`migrate-core::proto`) and pairing are implemented.
+//! The real TLS transport (rustls + SPAKE2 pairing + length framing) lands on this same `Link`
+//! trait, so every test written against `FaultyLink` holds for it unchanged.
+
+pub mod link;
+
+pub use link::{Control, Endpoint, Fault, FaultyLink, Frame, Link, LinkError, Side};

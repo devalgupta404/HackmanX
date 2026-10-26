@@ -1,6 +1,14 @@
-//! Change capture on the source, behind one `Tracker` trait with three backends: `compare` (the
-//! always-available fallback that re-reads and hashes), `ebpf` (the dirty map via aya), and
-//! `lvm_mirror` (synchronous raid1 to a network leg). The mode is chosen at preflight (§A5).
+//! Change capture on the source, behind one [`Tracker`] trait with three real backends to come —
+//! `compare` (re-read and hash, the always-available fallback), `ebpf` (the dirty map via aya) and
+//! `lvm_mirror` (synchronous raid1 to a network leg) — chosen at preflight (§A5).
 //!
-//! Skeleton: the trait and the compare backend come first (the foundation path), then the eBPF
-//! and mirror backends (plan.md Phases 6, 9).
+//! This crate ships the trait and [`SimTracker`], the deterministic fake the end-to-end simulation
+//! drives (plan.md task 2.2), with the faults a real tracker suffers: a missed write, a detach, a
+//! passthrough write. The one rule a tracker must keep is **fail closed** (invariant M4): if it
+//! can't prove it saw every write, it says so, and the pass becomes a full compare.
+
+pub mod sim;
+pub mod tracker;
+
+pub use sim::SimTracker;
+pub use tracker::{Broken, Drained, Generation, TrackError, Tracker};

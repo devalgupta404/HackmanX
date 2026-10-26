@@ -222,8 +222,8 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 
 - [ ] **2.1 `LiveDisk`.** A `MemDisk` that a seeded writer thread mutates concurrently while recording a ground-truth write log.
   **Done when** a seed reproduces the exact same history.
-- [ ] **2.2 `SimTracker`.** A tracker fed from `LiveDisk`'s log, with injectable faults: drop, delay, detach.
-- [ ] **2.3 `FaultyLink`.** An in-memory transport that can drop, delay, duplicate or cut frames, and reconnect.
+- [x] **2.2 `SimTracker`.** A tracker fed from `LiveDisk`'s log, with injectable faults: drop, delay, detach.
+- [x] **2.3 `FaultyLink`.** An in-memory transport that can drop, delay, duplicate or cut frames, and reconnect.
 - [ ] **2.4 Two-sided crash harness.** Receiver on `CrashDisk`: crash at every write or flush point × resume × link cut at every frame.
   **Done when** the harness runs a 64 MiB migration exhaustively in under 2 min.
 - [ ] **2.5 Two-VM QEMU rig** in `xtask` (`cargo xtask migrate-vm-test`): a source VM running fio and Postgres, a target VM booted into the receiver, a switch, and kill-QEMU on either side.
