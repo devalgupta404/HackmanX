@@ -27,6 +27,8 @@ zbus = "6.1"
 zbus_polkit = "6.0"
 blocking = "1"
 proptest = "1.5"
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+egui_kittest = { version = "0.37", features = ["wgpu", "snapshot"] }
 
 bootshift-core = { path = "crates/core" }
 bootshift-disk = { path = "crates/disk" }

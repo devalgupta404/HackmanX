@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 546eb435919f43a4ea4f1b6284a552fad7fc633417c0eb3cef38ab7921360bc4 # shrinks to layout = Layout { geometry: Geometry { sector_size: 512, usable: Extent { start: Lba(2048), len: Sectors(2093056) }, alignment: Sectors(2048) }, partitions: [Partition { number: 1, unique_guid: Guid([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]), type_guid: Guid([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), name: "", attributes: 0, extent: Extent { start: Lba(2048), len: Sectors(2049) }, content: EfiSystem, used: Sectors(683), min_len: None }, Partition { number: 2, unique_guid: Guid([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]), type_guid: Guid([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), name: "", attributes: 0, extent: Extent { start: Lba(6145), len: Sectors(2048) }, content: Ext4, used: Sectors(682), min_len: None }, Partition { number: 3, unique_guid: Guid([3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]), type_guid: Guid([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), name: "", attributes: 0, extent: Extent { start: Lba(10241), len: Sectors(2048) }, content: EfiSystem, used: Sectors(682), min_len: None }] }, edits = [(4, End(0.0)), (4, Move(0.0))]

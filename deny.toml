@@ -23,6 +23,12 @@ allow = [
     "CC0-1.0",
     "Unicode-3.0",
 ]
+# Font licences, only for the crate that ships egui's built-in fonts. Fonts are data shipped
+# beside the program, not code linked into it. The fonts the GUI bundles itself carry the same
+# licences; their texts are in crates/gui/assets/fonts.
+exceptions = [
+    { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
+]
 
 [bans]
 multiple-versions = "warn"
