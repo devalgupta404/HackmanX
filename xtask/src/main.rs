@@ -55,6 +55,14 @@ enum Task {
         #[arg(long)]
         fresh: bool,
     },
+    /// Boot the guest, run bootshiftd inside it, and forward its system D-Bus to this machine,
+    /// so the desktop GUI on this box can drive the guest's real disk. Prints the command to
+    /// launch the GUI. The guest's screen (in a window) shows the recovery console on reboot.
+    DemoGui {
+        /// Start a clean disk, discarding any from a previous `demo-gui` run.
+        #[arg(long)]
+        fresh: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -68,8 +76,117 @@ fn main() -> Result<()> {
         Task::VmTest => vm_test(&paths),
         Task::BootProof { no_power_cut } => boot_proof(&paths, no_power_cut),
         Task::Demo { fresh } => demo(&paths, fresh),
+        Task::DemoGui { fresh } => demo_gui(&paths, fresh),
     }
 }
+
+/// The host-side D-Bus socket the GUI connects to; ssh forwards it to the guest's system bus.
+const FORWARDED_BUS: &str = "/tmp/bootshift-vm-bus";
+
+/// Boots the guest, installs and starts bootshiftd in it, forwards its system bus to this box,
+/// and prints the command that launches the desktop GUI against the guest's real disk.
+fn demo_gui(paths: &Paths, fresh: bool) -> Result<()> {
+    let disk = paths.out.join("demo-gui.qcow2");
+    if fresh || !disk.exists() {
+        prepare_vm(paths, false)?;
+        let _ = std::fs::remove_file(&disk);
+        run(Command::new("qemu-img")
+            .args(["create", "-f", "qcow2", "-F", "qcow2", "-b"])
+            .arg(paths.prepared())
+            .arg(&disk))?;
+    }
+    // Show the VM window when this box has a desktop; headless when run over SSH.
+    let has_display =
+        std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some();
+    let mut guest = Guest::launch(paths, &disk, has_display)?;
+    guest.wait_ssh()?;
+
+    println!("installing bootshiftd in the guest…");
+    build_musl_bootshift(paths)?;
+    let helper = build_helper(paths)?;
+    guest.ssh("sudo mkdir -p /usr/libexec/bootshift")?;
+    guest.scp(&paths.musl_binary(), "/tmp/bootshift")?;
+    guest.scp(&helper, "/tmp/bootshiftd")?;
+    guest.ssh(
+        "sudo install -m0755 /tmp/bootshift /usr/libexec/bootshift/bootshift \
+         && sudo install -m0755 /tmp/bootshiftd /usr/libexec/bootshift/bootshiftd",
+    )?;
+    // The D-Bus policy lets root own the name; the GUI reaches it over the forwarded bus.
+    guest.scp(
+        &paths.repo.join("packaging/dbus/org.bootshift.Helper1.conf"),
+        "/tmp/bootshift.conf",
+    )?;
+    guest.ssh(
+        "sudo install -m0644 /tmp/bootshift.conf /usr/share/dbus-1/system.d/org.bootshift.Helper1.conf \
+         && sudo systemctl reload dbus 2>/dev/null; true",
+    )?;
+
+    println!("starting bootshiftd (authorization waived for the demo)…");
+    // Run it as a transient root unit with the demo polkit bypass; stop any prior one by name
+    // (never pkill -f: its pattern would match the shell running it and kill this SSH session).
+    guest.ssh("sudo systemctl reset-failed bootshiftd-demo 2>/dev/null; sudo systemctl stop bootshiftd-demo 2>/dev/null; true")?;
+    guest.ssh(
+        "sudo systemd-run --unit=bootshiftd-demo --setenv=BOOTSHIFT_SKIP_POLKIT=1 \
+         /usr/libexec/bootshift/bootshiftd",
+    )?;
+    let version = guest
+        .ssh("for i in $(seq 1 10); do out=$(dbus-send --system --print-reply --dest=org.bootshift.Helper1 /org/bootshift/Helper1 org.bootshift.Helper1.Version 2>&1); echo \"$out\" | grep -q string && { echo \"$out\" | tail -1; exit 0; }; sleep 1; done; echo TIMEOUT")
+        .unwrap_or_default();
+    if !version.contains("string") {
+        bail!("bootshiftd did not answer on the guest's system bus:\n{version}");
+    }
+    println!("bootshiftd answers on the guest's bus: {}", version.trim());
+
+    let port = guest.ssh_port();
+    let key = paths.ssh_key.clone();
+    guest.leak();
+
+    // Forward the guest's system bus socket to this box as a unix socket the GUI can use.
+    let _ = std::fs::remove_file(FORWARDED_BUS);
+    Command::new("ssh")
+        .args(["-p", &port.to_string()])
+        .arg("-i")
+        .arg(&key)
+        .args([
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ExitOnForwardFailure=yes",
+            "-o",
+            "StreamLocalBindUnlink=yes",
+            "-fN",
+            "-L",
+        ])
+        .arg(format!("{FORWARDED_BUS}:/run/dbus/system_bus_socket"))
+        .arg("ubuntu@127.0.0.1")
+        .status()
+        .context("starting the D-Bus forward")?;
+
+    let gui = paths.repo.join("target/release/bootshift-gui");
+    println!("\n================  BootShift GUI demo is ready  ================\n");
+    println!("The guest's bus is forwarded to {FORWARDED_BUS}. Build the GUI once:\n");
+    println!("  cargo build -p bootshift-gui --release\n");
+    println!("Then launch the desktop app against the guest's REAL disk:\n");
+    println!("  DBUS_SYSTEM_BUS_ADDRESS=unix:path={FORWARDED_BUS} {}\n", gui.display());
+    println!("Drag a partition, run the checks, and apply. When it says to restart, reboot the");
+    println!("guest to watch the recovery console in the VM window:\n");
+    println!("  ssh -p {port} -i {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@127.0.0.1 sudo reboot\n", key.display());
+    println!("After it boots back, reopen the GUI to see the new layout.");
+    println!("Stop everything:  pkill -f demo-gui.qcow2; pkill -f {FORWARDED_BUS}\n");
+    println!("==============================================================\n");
+    Ok(())
+}
+
+fn build_helper(paths: &Paths) -> Result<PathBuf> {
+    println!("building bootshiftd…");
+    run(Command::new("cargo")
+        .current_dir(&paths.repo)
+        .args(["build", "-p", "bootshift-helper", "--release"]))?;
+    Ok(paths.repo.join("target/release/bootshiftd"))
+}
+
 
 /// Boots the guest in a window, installs today's binary, writes a ready target that moves and
 /// grows the data partition, then leaves the machine running for you to drive by hand.
