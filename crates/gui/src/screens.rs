@@ -437,7 +437,13 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
     let enabled = app.probed.is_some();
     let hovered = response.hovered() && enabled;
 
-    // Lay the text out before borrowing the painter.
+    // Resting, the card shows only its title, centred. On hover the title rises and the
+    // description slides down and fades in, so there is less text until you reach for it.
+    let reveal = ui
+        .ctx()
+        .animate_bool_with_time(ui.id().with(("goal-card", goal.title())), hovered, 0.13);
+
+    // Lay the text out before borrowing the painter; the blurb fades with the reveal.
     let title = widgets::galley(ui, goal.title(), Face::Sans(Weight::SemiBold), 16.0, theme::INK);
     let chip = Rect::from_min_size(
         rect.left_top() + Vec2::new(16.0, (height - if featured { 46.0 } else { 42.0 }) / 2.0),
@@ -449,7 +455,7 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
         goal.blurb(),
         Face::Sans(Weight::Regular),
         13.0,
-        theme::DIM,
+        theme::alpha(theme::DIM, reveal),
         rect.right() - text_x - 18.0,
     );
     let tag = match goal {
@@ -457,7 +463,7 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
         Goal::DoItMyself => Some(("ADVANCED", theme::FAINT)),
         _ => None,
     };
-    let tag = tag.map(|(text, colour)| (widgets::galley(ui, text, Face::Mono(Weight::Medium), 9.5, colour), text_x));
+    let tag = tag.map(|(text, colour)| widgets::galley(ui, text, Face::Mono(Weight::Medium), 9.5, colour));
 
     let painter = ui.painter();
     let radius = CornerRadius::same(10);
@@ -479,19 +485,21 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
     painter.rect_filled(chip, CornerRadius::same(9), theme::DECK);
     painter.rect_filled(chip.shrink(14.0), CornerRadius::same(4), goal_colour(goal));
 
-    let title_y = rect.top() + if featured { 24.0 } else { 20.0 };
+    // The title slides from vertically centred (resting) up to just below the tag (hovered).
+    let title_h = 20.0;
+    let rest_y = rect.top() + (height - title_h) / 2.0;
+    let raised_y = rect.top() + if featured { 24.0 } else { 20.0 };
+    let title_y = egui::lerp(rest_y..=raised_y, reveal);
     widgets::text_at(painter, Align2::LEFT_TOP, Pos2::new(text_x, title_y), title);
-    widgets::text_at(
-        painter,
-        Align2::LEFT_TOP,
-        Pos2::new(text_x, title_y + 24.0),
-        blurb,
-    );
-    if let Some((galley, x)) = tag {
+    if reveal > 0.01 {
+        let blurb_y = title_y + egui::lerp(16.0..=24.0, reveal);
+        widgets::text_at(painter, Align2::LEFT_TOP, Pos2::new(text_x, blurb_y), blurb);
+    }
+    if let Some(galley) = tag {
         widgets::text_at(
             painter,
             Align2::LEFT_TOP,
-            Pos2::new(x, rect.top() + if featured { 8.0 } else { 7.0 }),
+            Pos2::new(text_x, rect.top() + if featured { 8.0 } else { 7.0 }),
             galley,
         );
     }
