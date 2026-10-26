@@ -274,11 +274,11 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 
 ### Phase 8 — Target finalize
 
-- [ ] **8.1 Lay out the target disk** from the plan: GPT, partitions at new places, backup header at the new end.
-- [ ] **8.2 Grow:**
+- [x] **8.1 Lay out the target disk** from the plan: GPT, partitions at new places, backup header at the new end.
+- [x] **8.2 Grow:**
   - the filesystem: ext4 offline in the receiver; XFS and Btrfs mounted in the receiver;
   - LVM: `pvresize`, `lvextend`.
-- [ ] **8.3 Adapt for the new hardware through the undo log:**
+- [x] **8.3 Adapt for the new hardware through the undo log:**
   - storage and network drivers in the initramfs;
   - fstab entries and GRUB device names;
   - network config by MAC;
