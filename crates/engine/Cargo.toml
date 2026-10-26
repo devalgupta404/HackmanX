@@ -20,9 +20,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+gptman.workspace = true
 proptest.workspace = true
 tempfile.workspace = true
-gptman.workspace = true
 
 [lints]
 workspace = true
