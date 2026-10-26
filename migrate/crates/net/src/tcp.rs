@@ -81,6 +81,13 @@ impl TcpLink {
         self.cut
     }
 
+    /// Bytes queued to send that the kernel has not taken yet. The sender watches this to apply
+    /// backpressure: it stops reading and framing new chunks while the buffer is high, so a slow
+    /// receiver bounds the sender's memory instead of letting the queue grow without limit.
+    pub fn pending(&self) -> usize {
+        self.outbuf.len() - self.out_sent
+    }
+
     /// Writes as much of the outgoing buffer as the kernel will take right now.
     fn pump_out(&mut self) {
         while self.out_sent < self.outbuf.len() {

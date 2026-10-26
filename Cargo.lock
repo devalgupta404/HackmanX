@@ -436,7 +436,11 @@ name = "bootshift-migrate-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blake3",
+ "bootshift-disk",
  "bootshift-migrate-core",
+ "bootshift-migrate-net",
+ "bootshift-migrate-receive",
  "clap",
 ]
 

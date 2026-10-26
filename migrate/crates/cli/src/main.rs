@@ -6,6 +6,10 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+mod common;
+mod receive;
+mod send;
+
 #[derive(Parser)]
 #[command(
     name = "bootshift-migrate",
@@ -20,31 +24,41 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Boot as the receiver on the target: print a pairing code and wait for the source.
+    /// Boot as the receiver on the target: wait for the source and apply what it sends.
     Receive {
         /// The new data disk the machine will run from.
         #[arg(long)]
-        data: Option<PathBuf>,
+        data: PathBuf,
         /// A small device for the receiver's journal, index and receipt.
         #[arg(long)]
-        scratch: Option<PathBuf>,
-        /// Instead of a scratch device, reserve this many bytes at the end of the data disk.
-        #[arg(long, value_name = "BYTES")]
-        scratch_end: Option<u64>,
+        scratch: PathBuf,
+        /// Address to listen on for the source.
+        #[arg(long, default_value = "0.0.0.0:9876")]
+        listen: String,
+        /// Block size to assume when the data or scratch is an image file, not a block device.
+        #[arg(long, default_value_t = 4096)]
+        block_size: u32,
+        /// Migration epoch (must match the sender).
+        #[arg(long, default_value_t = 1)]
+        epoch: u64,
+        /// Run id for the scratch journal.
+        #[arg(long, default_value_t = 1)]
+        run_id: u64,
     },
     /// Send this source to a paired receiver.
     Send {
-        /// The receiver's pairing code.
-        code: String,
-        /// The receiver's address.
+        /// The source disk or image to send (opened read-only).
+        #[arg(long)]
+        source: PathBuf,
+        /// The receiver's address, host:port.
         #[arg(long)]
         to: String,
-        /// Data-downtime budget for the cutover gate.
-        #[arg(long, default_value = "5s")]
-        budget: String,
-        /// Change-capture mode.
-        #[arg(long, default_value = "auto")]
-        mode: String,
+        /// Block size to assume when the source is an image file, not a block device.
+        #[arg(long, default_value_t = 4096)]
+        block_size: u32,
+        /// Migration epoch (must match the receiver).
+        #[arg(long, default_value_t = 1)]
+        epoch: u64,
     },
     /// Show the passes, churn, forecast and state on both sides.
     Status,
@@ -85,16 +99,31 @@ enum Command {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let name = match cli.command {
-        Command::Receive { .. } => "receive",
-        Command::Send { .. } => "send",
-        Command::Status => "status",
-        Command::Rehearse { .. } => "rehearse",
-        Command::Cutover { .. } => "cutover",
-        Command::Rollback => "rollback",
-        Command::Verify => "verify",
-        Command::VerifyReceipt { .. } => "verify-receipt",
-        Command::Finalize { .. } => "finalize",
-    };
+    match cli.command {
+        Command::Receive {
+            data,
+            scratch,
+            listen,
+            block_size,
+            epoch,
+            run_id,
+        } => receive::run(&data, &scratch, &listen, block_size, epoch, run_id),
+        Command::Send {
+            source,
+            to,
+            block_size,
+            epoch,
+        } => send::run(&source, &to, block_size, epoch),
+        Command::Status => not_implemented("status"),
+        Command::Rehearse { .. } => not_implemented("rehearse"),
+        Command::Cutover { .. } => not_implemented("cutover"),
+        Command::Rollback => not_implemented("rollback"),
+        Command::Verify => not_implemented("verify"),
+        Command::VerifyReceipt { .. } => not_implemented("verify-receipt"),
+        Command::Finalize { .. } => not_implemented("finalize"),
+    }
+}
+
+fn not_implemented(name: &str) -> anyhow::Result<()> {
     anyhow::bail!("bootshift-migrate: `{name}` is not implemented yet (see migrate/plan.md)")
 }
