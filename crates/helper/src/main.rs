@@ -26,6 +26,19 @@ impl Helper {
         env!("CARGO_PKG_VERSION").to_string()
     }
 
+    async fn list_disks(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> fdo::Result<String> {
+        authority::require(connection, &header, authority::INSPECT).await?;
+        run_blocking(|| {
+            let disks = bootshift_fs::probe::disks(&SystemRunner).map_err(ServiceError::from);
+            responses::reply(disks.map(|d| responses::disk_summaries(&d)))
+        })
+        .await
+    }
+
     async fn probe(
         &self,
         #[zbus(header)] header: Header<'_>,
