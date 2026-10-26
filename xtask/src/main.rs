@@ -74,6 +74,10 @@ enum Task {
         /// the eBPF tracker, a freeze cutover and a signed receipt.
         #[arg(long)]
         live: bool,
+        /// Reshape: the source is a partitioned disk migrated onto a larger target, then finalize
+        /// grows the partition and filesystem to fill it.
+        #[arg(long)]
+        reshape: bool,
     },
 }
 
@@ -89,7 +93,9 @@ fn main() -> Result<()> {
         Task::BootProof { no_power_cut } => boot_proof(&paths, no_power_cut),
         Task::Demo { fresh } => demo(&paths, fresh),
         Task::DemoGui { fresh } => demo_gui(&paths, fresh),
-        Task::MigrateRig { data_mib, live } => migrate_rig(&paths, data_mib, live),
+        Task::MigrateRig { data_mib, live, reshape } => {
+            migrate_rig(&paths, data_mib, live, reshape)
+        }
     }
 }
 
@@ -583,10 +589,10 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
 /// over a real TCP link, then proves the target is byte-identical and its filesystem mounts intact.
 /// The link runs through the host loopback: the target forwards a host port to its receiver, and the
 /// source reaches it as `10.0.2.2:<port>` (its view of the host). Nothing touches a real disk.
-fn migrate_rig(paths: &Paths, data_mib: u64, live: bool) -> Result<()> {
+fn migrate_rig(paths: &Paths, data_mib: u64, live: bool, reshape: bool) -> Result<()> {
     prepare_vm(paths, false)?;
     // Live mode needs the eBPF tracker, which libbpf ties to glibc, so it uses the dynamic binary;
-    // the plain copy uses the static musl binary.
+    // the plain copy and reshape use the static musl binary.
     let migrate_bin = if live {
         build_migrate_ebpf(paths)?
     } else {
@@ -595,6 +601,8 @@ fn migrate_rig(paths: &Paths, data_mib: u64, live: bool) -> Result<()> {
 
     let data_bytes = data_mib * (1 << 20);
     let scratch_bytes = 64u64 * (1 << 20);
+    // Reshape migrates the source onto a larger target disk and grows into it.
+    let target_bytes = if reshape { data_bytes * 3 } else { data_bytes };
 
     let src_root = overlay_of(paths, &paths.prepared(), "mig-src.qcow2")?;
     let tgt_root = overlay_of(paths, &paths.prepared(), "mig-tgt.qcow2")?;
@@ -602,7 +610,7 @@ fn migrate_rig(paths: &Paths, data_mib: u64, live: bool) -> Result<()> {
     let tgt_data = paths.out.join("mig-tgt-data.raw");
     let tgt_scratch = paths.out.join("mig-tgt-scratch.raw");
     create_raw(&src_data, data_bytes)?;
-    create_raw(&tgt_data, data_bytes)?;
+    create_raw(&tgt_data, target_bytes)?;
     create_raw(&tgt_scratch, scratch_bytes)?;
 
     let display = display_from_env();
@@ -635,20 +643,30 @@ fn migrate_rig(paths: &Paths, data_mib: u64, live: bool) -> Result<()> {
     let scr_dev = "/dev/disk/by-id/virtio-tgtscr";
 
     println!("filling the source data disk with a filesystem and checksummed files…");
-    source.ssh(&format!("sudo mkfs.ext4 -q -F {src_dev}"))?;
     let files_cmd = format!(
         "for i in $(seq 1 {}); do sudo dd if=/dev/urandom of=/mnt/d/file$i bs=1M count=8 status=none; done \
          && sudo sh -c 'cd /mnt/d && sha256sum file* > MANIFEST' && sudo sync",
         (data_mib / 16).max(1),
     );
-    if live {
-        // Keep the source mounted and churning: the tracker captures the writes, and the freeze
-        // cutover plus the receipt prove the target equals the frozen image.
-        source.ssh(&format!("sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd}"))?;
-    } else {
+    if reshape {
+        // A partitioned disk: GPT + one ext4 partition, so finalize has a partition to grow.
+        source.ssh(&format!("sudo sgdisk -n 1:0:0 -t 1:8300 {src_dev} >/dev/null && sudo partprobe {src_dev} 2>/dev/null; sudo partx -u {src_dev} 2>/dev/null; true"))?;
+        let src_part = format!("{src_dev}-part1");
         source.ssh(&format!(
-            "sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd} && sudo umount /mnt/d"
+            "sudo mkfs.ext4 -q -F {src_part} && sudo mkdir -p /mnt/d && sudo mount {src_part} /mnt/d \
+             && {files_cmd} && sudo umount /mnt/d"
         ))?;
+    } else {
+        source.ssh(&format!("sudo mkfs.ext4 -q -F {src_dev}"))?;
+        if live {
+            // Keep the source mounted and churning: the tracker captures the writes, and the freeze
+            // cutover plus the receipt prove the target equals the frozen image.
+            source.ssh(&format!("sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd}"))?;
+        } else {
+            source.ssh(&format!(
+                "sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd} && sudo umount /mnt/d"
+            ))?;
+        }
     }
 
     println!("installing the migrate binary in both guests…");
@@ -668,7 +686,9 @@ fn migrate_rig(paths: &Paths, data_mib: u64, live: bool) -> Result<()> {
     target.ssh("for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q ':9876' && exit 0; sleep 0.5; done; echo 'receiver never listened'; cat /tmp/recv.log 2>/dev/null; exit 1")
         .context("the receiver never started listening")?;
 
-    if live {
+    if reshape {
+        migrate_reshape(&mut source, &mut target, src_dev, tgt_dev, mig_port, data_mib)?;
+    } else if live {
         migrate_live(&mut source, &mut target, src_dev, tgt_dev, mig_port)?;
     } else {
         migrate_copy(&mut source, &mut target, src_dev, tgt_dev, mig_port)?;
@@ -679,7 +699,11 @@ fn migrate_rig(paths: &Paths, data_mib: u64, live: bool) -> Result<()> {
     println!();
     println!("MIGRATE RIG PASSED");
     println!("  filled a {data_mib} MiB data disk on the source machine");
-    if live {
+    if reshape {
+        println!("  migrated it onto a {}x larger disk on a second machine", 3);
+        println!("  finalize grew the partition and ext4 filesystem to fill the new disk");
+        println!("  the grown filesystem is clean and every file still checks out");
+    } else if live {
         println!("  migrated it LIVE (mounted and churning) to a second machine over a real link");
         println!("  froze the source, drained the last writes, and signed a byte-equality receipt");
         println!("  the migrated filesystem is clean and mounts on the target");
@@ -774,6 +798,62 @@ fn migrate_live(
     ))?;
     if !check.contains("FSCK-CLEAN") || !check.contains("MOUNT-OK") {
         bail!("the migrated filesystem is not clean/mountable:\n{check}");
+    }
+    Ok(())
+}
+
+/// Migrate a partitioned source onto a larger target, then finalize: grow the partition and its
+/// filesystem to fill the new disk, and check it is clean with every file intact.
+fn migrate_reshape(
+    source: &mut Guest,
+    target: &mut Guest,
+    src_dev: &str,
+    tgt_dev: &str,
+    mig_port: u16,
+    data_mib: u64,
+) -> Result<()> {
+    println!("migrating the partitioned source onto the larger target…");
+    let sent = source.ssh(&format!(
+        "sudo /usr/local/sbin/bootshift-migrate send --source {src_dev} --to 10.0.2.2:{mig_port}"
+    ))?;
+    if !sent.contains("copied and verified") {
+        bail!("the sender did not report success:\n{sent}");
+    }
+    let recv_log = target.ssh(
+        "for i in $(seq 1 30); do systemctl is-active migrate-recv >/dev/null 2>&1 || break; sleep 1; done; \
+         cat /tmp/recv.log 2>/dev/null | tail -3",
+    )?;
+    if !recv_log.contains("written and verified") {
+        bail!("the receiver did not report a verified target:\n{recv_log}");
+    }
+
+    println!("finalizing: growing the partition and filesystem to fill the new disk…");
+    let fin = target.ssh(&format!(
+        "sudo /usr/local/sbin/bootshift-migrate finalize --data {tgt_dev} --grow-last 2>&1 | grep -v '^Warning:'"
+    ))?;
+    println!("{}", fin.trim());
+    if !fin.contains("finalize: done") {
+        bail!("finalize did not complete:\n{fin}");
+    }
+
+    let check = target.ssh(&format!(
+        "p=$(lsblk -nro NAME,TYPE {tgt_dev} | awk '$2==\"part\"{{print \"/dev/\"$1}}' | tail -1); \
+         sudo e2fsck -fn $p >/dev/null 2>&1 && echo FSCK-CLEAN; \
+         b=$(sudo dumpe2fs -h $p 2>/dev/null | awk -F: '/Block count/{{gsub(/ /,\"\",$2);print $2}}'); \
+         echo GROWN_MIB=$((b*4/1024)); \
+         sudo mkdir -p /mnt/d && sudo mount $p /mnt/d && (cd /mnt/d && sudo sha256sum --quiet -c MANIFEST && echo FILES-OK); sudo umount /mnt/d",
+    ))?;
+    println!("verify: {}", check.replace('\n', " ").trim());
+    if !check.contains("FSCK-CLEAN") || !check.contains("FILES-OK") {
+        bail!("the grown filesystem is not clean or files differ:\n{check}");
+    }
+    let grown_mib: u64 = check
+        .lines()
+        .find_map(|l| l.strip_prefix("GROWN_MIB="))
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0);
+    if grown_mib <= data_mib {
+        bail!("the filesystem did not grow past the original {data_mib} MiB (got {grown_mib} MiB)");
     }
     Ok(())
 }
