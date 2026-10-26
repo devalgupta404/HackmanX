@@ -38,7 +38,12 @@ pub enum JournalError {
 }
 
 impl JournalFile {
-    pub fn new(mut extents: Vec<FileExtent>) -> Result<Self, JournalError> {
+    pub fn new(extents: Vec<FileExtent>) -> Result<Self, JournalError> {
+        Self::covering(extents, journal::FILE_LEN)
+    }
+
+    /// Extents that must cover file offsets `0..len` with no holes.
+    pub fn covering(mut extents: Vec<FileExtent>, len: u64) -> Result<Self, JournalError> {
         extents.sort_by_key(|extent| extent.file_offset);
         let mut covered: u64 = 0;
         for extent in &extents {
@@ -49,10 +54,17 @@ impl JournalFile {
                 .checked_add(extent.len)
                 .ok_or(JournalError::BadExtents)?;
         }
-        if covered < journal::FILE_LEN {
+        if covered < len {
             return Err(JournalError::BadExtents);
         }
         Ok(Self { extents })
+    }
+
+    /// Whether any extent touches the device byte range `range`.
+    pub fn overlaps(&self, range: &Range<u64>) -> bool {
+        self.extents.iter().any(|extent| {
+            extent.device_offset < range.end && range.start < extent.device_offset + extent.len
+        })
     }
 
     pub fn read_at<D: BlockDevice + ?Sized>(
