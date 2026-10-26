@@ -237,7 +237,7 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
             .plan
             .operations
             .iter()
-            .map(operation_partition)
+            .map(Operation::partition)
             .collect();
         let Some(last) = self.layouts.last() else {
             return Ok(());
@@ -303,16 +303,6 @@ fn removed_swaps(run: &RunPlan) -> Vec<Guid> {
             _ => None,
         })
         .collect()
-}
-
-fn operation_partition(operation: &Operation) -> Guid {
-    match operation {
-        Operation::Shrink { partition, .. }
-        | Operation::Move { partition, .. }
-        | Operation::Grow { partition, .. }
-        | Operation::RemoveSwap { partition } => *partition,
-        Operation::RecreateSwap { partition } => partition.unique_guid,
-    }
 }
 
 fn step(operation: u32, steps_done: u8) -> Progress {

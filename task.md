@@ -387,6 +387,20 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 - [ ] **10.7** Done step: mount the ESP, restore the bootloader config and BootOrder, delete temp files, unmount, reboot. Every action is idempotent.
 - [ ] **10.8** Escape hatch: `bootshift resume --journal …` works from any live USB with the same binary.
 
+### Phase 10b — Command line
+
+- [x] **10b.1** `bootshift probe <disk> [--target-template]`, `bootshift plan <disk> <target.json>` and `bootshift check <disk> <target.json>`.
+  - All three only read. They need root to open the disk and say so when it is missing.
+  - `engine::probe::layout` builds the planner's layout from the GPT, `lsblk`, `tune2fs`/`resize2fs -P` and `ntfsresize --info`. A failed measurement counts as full with no minimum.
+  - `engine::facts::gather` collects every preflight fact. GRUB vendor: the only one, or the one named like BootCurrent's entry; refused if that can't be told.
+  - A target file maps PARTUUIDs to `{start, len}` in sectors. `probe --target-template` prints the current layout to start from.
+- [ ] **10b.2** `bootshift apply <disk> <target.json>`: the prepare step, in order.
+  - Check everything.
+  - Write the journal and verify it reads back through the raw device.
+  - Copy the kernel and initramfs, back up the table with `sfdisk -d`.
+  - Install the GRUB redirect, then set the boot order. Each step is undone if a later one fails.
+- [ ] **10b.3** `bootshift recover` (PID 1) and `bootshift resume` (from a live USB).
+
 ### Phase 11 — Crash and boot test suites (VM)
 
 - [ ] **11.1** Kill-QEMU resume suite: random layouts on qcow2 overlays, with QEMU killed at random moments, thousands of times overnight.

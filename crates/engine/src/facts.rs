@@ -4,14 +4,92 @@
 use std::fs;
 use std::path::Path;
 
+use std::path::PathBuf;
+
+use bootshift_boot::{efi, grub};
 use bootshift_core::layout::{Content, Guid, Layout};
 use bootshift_core::refusal::Refusal;
 use bootshift_fs::ntfs::DirtyMark;
 use bootshift_fs::probe::DiskInfo;
 use bootshift_fs::run::Runner;
-use bootshift_fs::{ext4, ntfs};
+use bootshift_fs::{ext4, ntfs, smart};
 
-use crate::preflight::Power;
+use crate::preflight::{Bootloader, EspSpace, Facts, Power};
+
+/// Room on the ESP for the initramfs (about 8 MiB measured) and the 4 MiB journal, with margin.
+const RECOVERY_EXTRA_BYTES: u64 = 24 << 20;
+
+/// Where to look for things on the running system. Tests point these at temporary trees.
+pub struct Environment<'a> {
+    pub runner: &'a dyn Runner,
+    pub sys: &'a Path,
+    pub lib_modules: &'a Path,
+    pub boot: &'a Path,
+    pub kernel_release: &'a str,
+}
+
+/// Everything preflight needs to know about the computer, the disk and the partitions the plan
+/// changes.
+pub fn gather(env: &Environment<'_>, disk: &DiskInfo, layout: &Layout, changed: &[Guid]) -> Facts {
+    let esp = esp_mountpoint(disk, layout);
+    let kernel_size = fs::metadata(env.boot.join(format!("vmlinuz-{}", env.kernel_release)))
+        .map(|m| m.len())
+        .ok();
+    Facts {
+        uefi: booted_with_uefi(env.sys),
+        partition_table: disk.partition_table.clone(),
+        usb_disk: disk.is_usb(),
+        power: power(env.sys),
+        health: smart::health(env.runner, &disk.path),
+        kernel_modules_present: kernel_modules_present(env.lib_modules, env.kernel_release),
+        esp: EspSpace {
+            free: esp.as_deref().and_then(free_space),
+            needed: kernel_size.map(|size| size + RECOVERY_EXTRA_BYTES),
+        },
+        bootloader: bootloader(env.runner, esp.as_deref()),
+        filesystem_problems: filesystem_problems(env.runner, disk, layout, changed),
+        hibernated_swap: has_hibernated_swap(disk),
+    }
+}
+
+/// Where the EFI system partition is mounted, if it is.
+pub fn esp_mountpoint(disk: &DiskInfo, layout: &Layout) -> Option<PathBuf> {
+    let esp = layout
+        .partitions
+        .iter()
+        .find(|p| p.content == Content::EfiSystem)?;
+    disk.partition(esp.number)?.mountpoints.first().cloned()
+}
+
+fn bootloader(runner: &dyn Runner, esp: Option<&Path>) -> Bootloader {
+    let Some(esp) = esp else {
+        return Bootloader::Unsupported("the EFI system partition isn't mounted".to_string());
+    };
+    let vendors = grub::vendors_with_config(esp).unwrap_or_default();
+    if vendors.is_empty() {
+        let reason = if esp.join("loader/loader.conf").is_file() {
+            "systemd-boot support isn't finished yet"
+        } else {
+            "no GRUB config was found on the EFI system partition"
+        };
+        return Bootloader::Unsupported(reason.to_string());
+    }
+    let current_label = efi::read(runner).ok().and_then(|entries| {
+        let current = entries.current?;
+        entries
+            .entries
+            .into_iter()
+            .find(|e| e.number == current)
+            .map(|e| e.label)
+    });
+    match grub::pick_vendor(&vendors, current_label.as_deref()) {
+        Some(vendor) => Bootloader::Grub { vendor },
+        None => Bootloader::Unsupported(format!(
+            "several GRUB installs were found ({}) and BootShift can't tell which one starts this system",
+            vendors.join(", ")
+        )),
+    }
+}
 
 /// Whether the system was started through UEFI.
 pub fn booted_with_uefi(sys: &Path) -> bool {
