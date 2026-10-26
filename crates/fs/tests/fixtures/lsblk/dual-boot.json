@@ -1,0 +1,31 @@
+{
+   "blockdevices": [
+      {
+         "path": "/dev/nvme0n1", "type": "disk", "size": 512110190592, "log-sec": 512, "tran": "nvme", "rm": false, "hotplug": false, "pttype": "gpt", "fstype": null, "uuid": null, "label": null, "partuuid": null, "parttype": null, "partn": null, "start": null, "mountpoints": [null],
+         "children": [
+            {
+               "path": "/dev/nvme0n1p1", "type": "part", "size": 272629760, "log-sec": 512, "tran": "nvme", "rm": false, "hotplug": false, "pttype": "gpt", "fstype": "vfat", "uuid": "8A3C-1F2E", "label": "SYSTEM", "partuuid": "0b5e2f6c-5d9a-4a7e-9e0d-3c4b2a1f0e9d", "parttype": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b", "partn": 1, "start": 2048, "mountpoints": ["/boot/efi"]
+            },{
+               "path": "/dev/nvme0n1p2", "type": "part", "size": 16777216, "log-sec": 512, "tran": "nvme", "rm": false, "hotplug": false, "pttype": "gpt", "fstype": null, "uuid": null, "label": null, "partuuid": "6f1a9d3e-2b7c-4e5f-8a9b-0c1d2e3f4a5b", "parttype": "e3c9e316-0b5c-4db8-817d-f92df00215ae", "partn": 2, "start": 534528, "mountpoints": [null]
+            },{
+               "path": "/dev/nvme0n1p3", "type": "part", "size": 214748364800, "log-sec": 512, "tran": "nvme", "rm": false, "hotplug": false, "pttype": "gpt", "fstype": "ntfs", "uuid": "5E3A1B2C3D4E5F60", "label": "Windows", "partuuid": "9c8b7a6d-5e4f-4321-a0b1-c2d3e4f5a6b7", "parttype": "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7", "partn": 3, "start": 567296, "mountpoints": [null]
+            },{
+               "path": "/dev/nvme0n1p4", "type": "part", "size": 838860800, "log-sec": 512, "tran": "nvme", "rm": false, "hotplug": false, "pttype": "gpt", "fstype": "ntfs", "uuid": "7A6B5C4D3E2F1A0B", "label": "WinRE", "partuuid": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "parttype": "de94bba4-06d1-4d40-a16a-bfd50179d6ac", "partn": 4, "start": 419997696, "mountpoints": [null]
+            },{
+               "path": "/dev/nvme0n1p5", "type": "part", "size": 268435456000, "log-sec": 512, "tran": "nvme", "rm": false, "hotplug": false, "pttype": "gpt", "fstype": "ext4", "uuid": "3f2e1d0c-9b8a-4766-a5b4-c3d2e1f0a9b8", "label": null, "partuuid": "aa11bb22-cc33-4d44-9e55-ff6600778899", "parttype": "0fc63daf-8483-4772-8e79-3d69d8477de4", "partn": 5, "start": 421636096, "mountpoints": ["/"]
+            },{
+               "path": "/dev/nvme0n1p6", "type": "part", "size": 8589934592, "log-sec": 512, "tran": "nvme", "rm": false, "hotplug": false, "pttype": "gpt", "fstype": "swap", "uuid": "c0ffee00-1234-4abc-8def-001122334455", "label": null, "partuuid": "bb22cc33-dd44-4e55-8f66-778899aabbcc", "parttype": "0657fd6d-a4ab-43c4-84e5-0933c84b4f4f", "partn": 6, "start": 945924096, "mountpoints": ["[SWAP]"]
+            }
+         ]
+      },{
+         "path": "/dev/sda", "type": "disk", "size": 30765219840, "log-sec": 512, "tran": "usb", "rm": true, "hotplug": true, "pttype": "gpt", "fstype": null, "uuid": null, "label": null, "partuuid": null, "parttype": null, "partn": null, "start": null, "mountpoints": [null],
+         "children": [
+            {
+               "path": "/dev/sda1", "type": "part", "size": 30763122688, "log-sec": 512, "tran": "usb", "rm": true, "hotplug": true, "pttype": "gpt", "fstype": "swsuspend", "uuid": null, "label": null, "partuuid": "cc33dd44-ee55-4f66-8a77-8899aabbccdd", "parttype": "0657fd6d-a4ab-43c4-84e5-0933c84b4f4f", "partn": 1, "start": 2048, "mountpoints": [null]
+            }
+         ]
+      },{
+         "path": "/dev/loop0", "type": "loop", "size": 4096, "log-sec": 512, "tran": null, "rm": false, "hotplug": false, "pttype": null, "fstype": "squashfs", "uuid": null, "label": null, "partuuid": null, "parttype": null, "partn": null, "start": null, "mountpoints": ["/snap/core/1"]
+      }
+   ]
+}

@@ -270,11 +270,11 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - `with_partitions(layout, removable)` keeps every partition's slot, GUIDs, type, name and attributes. It refuses to drop an entry the layout doesn't describe unless it is listed as removable (a swap being recreated). Recreated entries return to their own slot.
   - `write_over(device, previous)` writes only the sectors that differ from the table it was derived from: backup copy, flush, primary copy, flush. The protective MBR is never rewritten.
   - The journal will keep the original image, so a resume rebuilds the same target from the same base.
-- [~] **6.2** (device done; kernel refresh pending on `fs::run`) `disk::RealDevice` and the kernel refresh.
+- [x] **6.2** `disk::RealDevice` and the kernel refresh.
   - [x] The device: `O_DIRECT` through an aligned bounce buffer (no `unsafe`), `fdatasync`, BLKSSZGET via `rustix`, size from seeking to the end.
     - Writable block devices are opened `O_EXCL`, so the kernel refuses a disk with a mounted partition.
     - Tested on image files, including the copier and journal end to end (`crates/engine/tests/copier_real_device.rs`).
-  - [ ] Refresh the kernel's view with `partx --update`, which uses BLKPG per partition, through `fs::run`. Never use BLKRRPART while anything is open.
+  - [x] `fs::kernel::refresh_partitions`: `partx --update`, which uses BLKPG per partition. BLKRRPART is never used.
 - [x] **6.3** Crash tests (`crates/disk/tests/gpt.rs`).
   - Every crash point × lost / landed / 32 scrambled outcomes: the table always reads as the old or the new one, and rewriting from the original finishes with both copies holding the target.
   - Also tested: identity kept, MBR untouched, undescribed partitions refused, slot changes refused, overlap refused, swap removed and recreated in its slot.
@@ -287,9 +287,12 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - Logs every command, never uses a shell, sets `LC_ALL=C` and closes stdin.
   - Stdout is kept as bytes, because `ntfscat` prints binary.
   - Closing stdin matters: `ntfsresize` treats end-of-input at its confirmation prompt as "yes". The adapters pass `--force` explicitly anyway.
-- [ ] **7.2** `fs::probe`: parse `lsblk -J -b -O` and `blkid -p -o export` into `core::layout`.
-  - Detects BitLocker, LUKS, LVM, RAID, XFS and USB transport.
-  - Unit tests use captured JSON from real machines.
+- [x] **7.2** `fs::probe`.
+  - `disks` runs `lsblk --json --bytes` with a fixed column list, giving disks with size, sector size, transport, removable flag and table type, and partitions with number, start, size, fstype, UUID, label, PARTUUID, type GUID and mounts.
+  - `content_of` maps fstype and type GUID to `Content`. A hibernated swap (`swsuspend`) maps to opaque, so its hibernation image is only ever moved, never wiped.
+  - `signature` runs `blkid --probe` for the recovery system, which has no udev.
+  - `core::layout::Guid` parses the canonical text form.
+  - Tests: a dual-boot + USB fixture, this machine's real `lsblk` output, and `blkid` on image files.
 - [ ] **7.3** `fs::guard`: guarded runs, using the design chosen in 0.6. Durable undo log, rollback, rerun.
   - Crash tests use CrashDisk (unit) and dm-log-writes (VM).
 - [~] **7.4** (adapter done; the guarded wrapping waits on 7.3) `fs::ext4`.
@@ -304,7 +307,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - The boot sector `0x1C` and backup boot-sector fix is a raw write, done in the executor's move step.
 - [ ] **7.6** `fs::btrfs`: mount in recovery; `btrfs filesystem resize <size>` before a move, `max` after. Used ranges from the dev-extent tree.
 - [ ] **7.7** `fs::xfs`: move, then `xfs_growfs` online after the restart. Used ranges from `xfs_db -r` free-space data, cross-checked against a full copy.
-- [ ] **7.8** `fs::swap`: hibernation-signature check; recreate with the same UUID and label.
+- [x] **7.8** `fs::swap::recreate`: `mkswap --uuid --label`, tested on an image file through `blkid`. The hibernation check is the `swsuspend` signature (7.2).
 - [ ] **7.9** `fs::opaque`: full byte-for-byte move with no resize, for LVM PV, LUKS, FAT data and unknown contents.
 - [~] **7.10** Adapter tests against the real tools.
   - Most adapters work on plain image files, so no root or VM is needed (`crates/fs/tests/{ext4,ntfs}_tools.rs`). CI installs `e2fsprogs` and `ntfs-3g`.

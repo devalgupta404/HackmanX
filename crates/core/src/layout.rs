@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::str::FromStr;
 
 use crate::units::{Lba, Sectors};
 
@@ -16,6 +17,43 @@ impl fmt::Display for Guid {
             b[3], b[2], b[1], b[0], b[5], b[4], b[7], b[6], b[8], b[9]
         )?;
         b[10..].iter().try_for_each(|byte| write!(f, "{byte:02x}"))
+    }
+}
+
+impl Guid {
+    /// The partition type of an EFI system partition.
+    pub const EFI_SYSTEM: Guid = Guid([
+        0x28, 0x73, 0x2a, 0xc1, 0x1f, 0xf8, 0xd2, 0x11, 0xba, 0x4b, 0x00, 0xa0, 0xc9, 0x3e, 0xc9,
+        0x3b,
+    ]);
+}
+
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[error("\"{0}\" is not a GUID")]
+pub struct GuidParseError(String);
+
+impl FromStr for Guid {
+    type Err = GuidParseError;
+
+    /// Parses the canonical `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` form, in either case.
+    fn from_str(text: &str) -> Result<Guid, GuidParseError> {
+        let error = || GuidParseError(text.to_string());
+        let groups: Vec<&str> = text.split('-').collect();
+        let lengths: Vec<usize> = groups.iter().map(|g| g.len()).collect();
+        if lengths != [8, 4, 4, 4, 12] {
+            return Err(error());
+        }
+        let hex: String = groups.concat();
+        let mut canonical = [0u8; 16];
+        for (index, byte) in canonical.iter_mut().enumerate() {
+            let pair = hex.get(index * 2..index * 2 + 2).ok_or_else(error)?;
+            *byte = u8::from_str_radix(pair, 16).map_err(|_| error())?;
+        }
+        let c = canonical;
+        Ok(Guid([
+            c[3], c[2], c[1], c[0], c[5], c[4], c[7], c[6], c[8], c[9], c[10], c[11], c[12], c[13],
+            c[14], c[15],
+        ]))
     }
 }
 
@@ -171,6 +209,26 @@ mod tests {
             0xc9, 0x3b,
         ]);
         assert_eq!(esp.to_string(), "c12a7328-f81f-11d2-ba4b-00a0c93ec93b");
+        assert_eq!(esp, Guid::EFI_SYSTEM);
+    }
+
+    #[test]
+    fn guid_parses_back_from_its_canonical_form() {
+        let text = "0FC63DAF-8483-4772-8E79-3D69D8477DE4";
+        let guid: Guid = text.parse().unwrap();
+        assert_eq!(guid.to_string(), text.to_lowercase());
+    }
+
+    #[test]
+    fn malformed_guids_are_refused() {
+        for text in [
+            "",
+            "c12a7328f81f11d2ba4b00a0c93ec93b",
+            "c12a7328-f81f-11d2-ba4b-00a0c93ec93",
+            "z12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+        ] {
+            assert!(text.parse::<Guid>().is_err(), "{text}");
+        }
     }
 
     #[test]
