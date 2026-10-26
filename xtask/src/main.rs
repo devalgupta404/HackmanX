@@ -13,7 +13,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
-use guest::{Guest, Paths};
+use guest::{ExtraDisk, Guest, LaunchOpts, Paths};
 
 /// Whether the automated commands should open the VM's screen (BOOTSHIFT_VM_DISPLAY=1).
 fn display_from_env() -> bool {
@@ -63,6 +63,14 @@ enum Task {
         #[arg(long)]
         fresh: bool,
     },
+    /// Machine-to-machine proof: boot two guests, fill a data disk on the source, migrate it to a
+    /// blank disk on the target over a real TCP link, and verify the target is byte-identical and
+    /// its filesystem mounts with every file intact.
+    MigrateRig {
+        /// Size of the data disk to migrate, in MiB.
+        #[arg(long, default_value_t = 256)]
+        data_mib: u64,
+    },
 }
 
 fn main() -> Result<()> {
@@ -77,6 +85,7 @@ fn main() -> Result<()> {
         Task::BootProof { no_power_cut } => boot_proof(&paths, no_power_cut),
         Task::Demo { fresh } => demo(&paths, fresh),
         Task::DemoGui { fresh } => demo_gui(&paths, fresh),
+        Task::MigrateRig { data_mib } => migrate_rig(&paths, data_mib),
     }
 }
 
@@ -563,6 +572,159 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
         println!("  survived a power cut mid-move and resumed from the journal");
     }
     println!("  every file byte-identical, table on target, booting restored");
+    Ok(())
+}
+
+/// Boots two guests and migrates a filled data disk on the source to a blank disk on the target
+/// over a real TCP link, then proves the target is byte-identical and its filesystem mounts intact.
+/// The link runs through the host loopback: the target forwards a host port to its receiver, and the
+/// source reaches it as `10.0.2.2:<port>` (its view of the host). Nothing touches a real disk.
+fn migrate_rig(paths: &Paths, data_mib: u64) -> Result<()> {
+    prepare_vm(paths, false)?;
+    let migrate_bin = build_musl_migrate(paths)?;
+
+    let data_bytes = data_mib * (1 << 20);
+    let scratch_bytes = 64u64 * (1 << 20);
+
+    let src_root = overlay_of(paths, &paths.prepared(), "mig-src.qcow2")?;
+    let tgt_root = overlay_of(paths, &paths.prepared(), "mig-tgt.qcow2")?;
+    let src_data = paths.out.join("mig-src-data.raw");
+    let tgt_data = paths.out.join("mig-tgt-data.raw");
+    let tgt_scratch = paths.out.join("mig-tgt-scratch.raw");
+    create_raw(&src_data, data_bytes)?;
+    create_raw(&tgt_data, data_bytes)?;
+    create_raw(&tgt_scratch, scratch_bytes)?;
+
+    let display = display_from_env();
+    // A host port the source reaches the target's receiver through (host loopback relays it).
+    let mig_port = guest::free_port()?;
+
+    println!("booting the target guest (the receiver)…");
+    let mut target = Guest::launch_opts(paths, &LaunchOpts {
+        disk: &tgt_root,
+        display,
+        extra_disks: &[
+            ExtraDisk { image: tgt_data.clone(), serial: "tgtdata".into() },
+            ExtraDisk { image: tgt_scratch.clone(), serial: "tgtscr".into() },
+        ],
+        extra_hostfwd: &[(mig_port, 9876)],
+    })?;
+    target.wait_ssh()?;
+
+    println!("booting the source guest (the sender)…");
+    let mut source = Guest::launch_opts(paths, &LaunchOpts {
+        disk: &src_root,
+        display,
+        extra_disks: &[ExtraDisk { image: src_data.clone(), serial: "srcdata".into() }],
+        extra_hostfwd: &[],
+    })?;
+    source.wait_ssh()?;
+
+    let src_dev = "/dev/disk/by-id/virtio-srcdata";
+    let tgt_dev = "/dev/disk/by-id/virtio-tgtdata";
+    let scr_dev = "/dev/disk/by-id/virtio-tgtscr";
+
+    println!("filling the source data disk with a filesystem and checksummed files…");
+    source.ssh(&format!("sudo mkfs.ext4 -q -F {src_dev}"))?;
+    source.ssh(&format!(
+        "sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d \
+         && for i in $(seq 1 {}); do sudo dd if=/dev/urandom of=/mnt/d/file$i bs=1M count=8 status=none; done \
+         && sudo sh -c 'cd /mnt/d && sha256sum file* > MANIFEST' \
+         && sudo sync && sudo umount /mnt/d",
+        (data_mib / 16).max(1),
+    ))?;
+    let src_hash = device_sha(&mut source, src_dev)?;
+    println!("source disk sha256: {src_hash}");
+
+    println!("installing the migrate binary in both guests…");
+    source.scp(&migrate_bin, "/tmp/bootshift-migrate")?;
+    source.ssh("sudo install -m0755 /tmp/bootshift-migrate /usr/local/sbin/bootshift-migrate")?;
+    target.scp(&migrate_bin, "/tmp/bootshift-migrate")?;
+    target.ssh("sudo install -m0755 /tmp/bootshift-migrate /usr/local/sbin/bootshift-migrate")?;
+
+    println!("starting the receiver on the target…");
+    target.ssh(&format!(
+        "sudo systemctl reset-failed migrate-recv 2>/dev/null; true; \
+         sudo systemd-run --unit=migrate-recv --collect /bin/sh -c \
+         'exec /usr/local/sbin/bootshift-migrate receive --data {tgt_dev} --scratch {scr_dev} \
+          --listen 0.0.0.0:9876 > /tmp/recv.log 2>&1'"
+    ))?;
+    // Wait until the receiver is actually listening before the source dials it.
+    target.ssh("for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q ':9876' && exit 0; sleep 0.5; done; echo 'receiver never listened'; cat /tmp/recv.log 2>/dev/null; exit 1")
+        .context("the receiver never started listening")?;
+
+    println!("sending from the source to the target over the link…");
+    let sent = source.ssh(&format!(
+        "sudo /usr/local/sbin/bootshift-migrate send --source {src_dev} --to 10.0.2.2:{mig_port}"
+    ))?;
+    if !sent.contains("copied and verified") {
+        bail!("the sender did not report success:\n{sent}");
+    }
+    println!("sender: {}", sent.trim());
+
+    // Let the receiver finish committing, then read its log.
+    let recv_log = target.ssh(
+        "for i in $(seq 1 30); do systemctl is-active migrate-recv >/dev/null 2>&1 || break; sleep 1; done; \
+         cat /tmp/recv.log 2>/dev/null | tail -5",
+    )?;
+    println!("receiver log:\n{}", recv_log.trim());
+    if !recv_log.contains("written and verified") {
+        bail!("the receiver did not report a verified target:\n{recv_log}");
+    }
+
+    println!("verifying the target disk is byte-identical…");
+    let tgt_hash = device_sha(&mut target, tgt_dev)?;
+    if tgt_hash != src_hash {
+        bail!("the target disk differs: source {src_hash} vs target {tgt_hash}");
+    }
+    let files = target.ssh(&format!(
+        "sudo mkdir -p /mnt/d && sudo mount {tgt_dev} /mnt/d \
+         && cd /mnt/d && sudo sha256sum --quiet -c MANIFEST && echo FILES-OK; cd /; sudo umount /mnt/d",
+    ))?;
+    if !files.contains("FILES-OK") {
+        bail!("the migrated filesystem failed verification:\n{files}");
+    }
+
+    source.poweroff()?;
+    target.poweroff()?;
+    println!();
+    println!("MIGRATE RIG PASSED");
+    println!("  filled a {data_mib} MiB data disk on the source machine");
+    println!("  migrated it to a blank disk on a second machine over a real TCP link");
+    println!("  the target is byte-for-byte identical (sha256 {src_hash})");
+    println!("  the migrated filesystem mounts and every file checks out");
+    Ok(())
+}
+
+/// The sha256 of a whole block device in the guest.
+fn device_sha(guest: &mut Guest, dev: &str) -> Result<String> {
+    let out = guest.ssh(&format!("sudo sha256sum {dev}"))?;
+    Ok(out.split_whitespace().next().unwrap_or("").to_string())
+}
+
+/// The static bootshift-migrate binary built for musl.
+fn build_musl_migrate(paths: &Paths) -> Result<PathBuf> {
+    println!("building the static bootshift-migrate binary…");
+    run(Command::new("cargo").current_dir(&paths.repo).args([
+        "build",
+        "-p",
+        "bootshift-migrate-cli",
+        "--release",
+        "--target",
+        "x86_64-unknown-linux-musl",
+    ]))?;
+    Ok(paths
+        .repo
+        .join("target/x86_64-unknown-linux-musl/release/bootshift-migrate"))
+}
+
+/// Creates a raw image file of `bytes` bytes, replacing any existing one.
+fn create_raw(path: &Path, bytes: u64) -> Result<()> {
+    let _ = std::fs::remove_file(path);
+    run(Command::new("qemu-img")
+        .args(["create", "-f", "raw"])
+        .arg(path)
+        .arg(bytes.to_string()))?;
     Ok(())
 }
 

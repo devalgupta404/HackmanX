@@ -98,6 +98,22 @@ pub fn write_seed(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
+/// An extra disk to attach to a guest, as a virtio block device. Inside the guest it appears at
+/// `/dev/disk/by-id/virtio-<serial>`, a stable name independent of probe order.
+pub struct ExtraDisk {
+    pub image: PathBuf,
+    pub serial: String,
+}
+
+/// Everything a launch may vary: the root disk, whether to show a window, extra data disks, and
+/// extra host-to-guest port forwards (host port, guest port) on top of SSH.
+pub struct LaunchOpts<'a> {
+    pub disk: &'a Path,
+    pub display: bool,
+    pub extra_disks: &'a [ExtraDisk],
+    pub extra_hostfwd: &'a [(u16, u16)],
+}
+
 pub struct Guest {
     child: Option<Child>,
     ssh_port: u16,
@@ -107,6 +123,16 @@ pub struct Guest {
 
 impl Guest {
     pub fn launch(paths: &Paths, disk: &Path, display: bool) -> Result<Self> {
+        Self::launch_opts(paths, &LaunchOpts {
+            disk,
+            display,
+            extra_disks: &[],
+            extra_hostfwd: &[],
+        })
+    }
+
+    pub fn launch_opts(paths: &Paths, opts: &LaunchOpts) -> Result<Self> {
+        let disk = opts.disk;
         let vars = disk.with_extension("vars.fd");
         if !vars.exists() {
             std::fs::copy(&paths.ovmf_vars, &vars)
@@ -125,6 +151,10 @@ impl Guest {
             command
                 .args(["-accel", "tcg,thread=multi"])
                 .args(["-cpu", "max"]);
+        }
+        let mut netdev = format!("user,id=n0,hostfwd=tcp:127.0.0.1:{ssh_port}-:22");
+        for (host, guest_port) in opts.extra_hostfwd {
+            netdev.push_str(&format!(",hostfwd=tcp:127.0.0.1:{host}-:{guest_port}"));
         }
         command
             .args(["-machine", "q35"])
@@ -149,13 +179,30 @@ impl Guest {
             .arg(format!(
                 "file={},format=raw,if=virtio,readonly=on",
                 paths.out.join("seed.iso").display()
-            ))
+            ));
+        for extra in opts.extra_disks {
+            command
+                .arg("-drive")
+                .arg(format!(
+                    "file={},if=none,id={},format=raw,cache=none",
+                    extra.image.display(),
+                    extra.serial
+                ))
+                .args([
+                    "-device",
+                    &format!(
+                        "virtio-blk-pci,drive={0},serial={0}",
+                        extra.serial
+                    ),
+                ]);
+        }
+        command
             .arg("-netdev")
-            .arg(format!("user,id=n0,hostfwd=tcp:127.0.0.1:{ssh_port}-:22"))
+            .arg(netdev)
             .args(["-device", "virtio-net-pci,netdev=n0"]);
         // With display, the virtual machine's screen opens in a window, for watching a run with
         // your own eyes; the serial log keeps feeding the harness either way.
-        if display {
+        if opts.display {
             command.args(["-display", "gtk"]);
         } else {
             command.args(["-display", "none"]);
@@ -397,7 +444,7 @@ fn percents(text: &str) -> Vec<u32> {
     out
 }
 
-fn free_port() -> Result<u16> {
+pub fn free_port() -> Result<u16> {
     let listener = TcpListener::bind("127.0.0.1:0").context("finding a free port")?;
     Ok(listener.local_addr()?.port())
 }
