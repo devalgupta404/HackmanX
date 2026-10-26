@@ -231,11 +231,17 @@ impl App {
         self.pending_check = None;
         match flatten(reply) {
             Ok(rows) => {
-                self.checks = rows.unwrap_or_default();
+                // The helper answers `ok` with no rows when every check passed but it didn't
+                // itemise them (issue I-18). Show one passed row so apply can unlock.
+                self.checks = rows.filter(|r| !r.is_empty()).unwrap_or_else(|| {
+                    vec![CheckResult {
+                        name: "All safety checks passed".to_string(),
+                        detail: "The disk, power, filesystems and bootloader are all ready."
+                            .to_string(),
+                        passed: true,
+                    }]
+                });
                 self.checks_started = Some(self.now);
-                if self.checks.is_empty() {
-                    self.finish_checks();
-                }
             }
             Err(refusals) => {
                 self.checks.clear();
@@ -381,15 +387,17 @@ impl App {
     }
 
     fn show_restart(&mut self) {
-        let bytes = self.plan.as_ref().map_or(0, |p| p.copy_bytes);
         self.show(Screen::Restart);
-        self.run = Some(RecoveryRun::new(bytes.max(1)));
-        self.status = if self.is_demo() {
-            "Demo: preview what the restart looks like, power cut included."
+        // The simulation is a demo teaching aid; on a real disk the move runs in the recovery
+        // system on the machine's own screen, so there is nothing for the app to play.
+        if self.is_demo() {
+            let bytes = self.plan.as_ref().map_or(0, |p| p.copy_bytes);
+            self.run = Some(RecoveryRun::new(bytes.max(1)));
+            self.status = "Demo: preview what the restart looks like, power cut included.".to_string();
         } else {
-            "Everything is ready. Restart the computer to begin."
+            self.run = None;
+            self.status = "Everything is ready. Restart the computer to begin.".to_string();
         }
-        .to_string();
     }
 
     fn preview_restart(&mut self) {

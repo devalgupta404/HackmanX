@@ -391,15 +391,42 @@ fn paint_mark(ui: &Ui, painter: &egui::Painter, rect: Rect, state: RowState) {
 /* ---------- restart ---------- */
 
 fn restart(ui: &mut Ui, app: &App, narrow: bool) {
+    if app.is_demo() {
+        header(
+            ui,
+            "During the restart",
+            "This is what the computer shows while BootShift works, before any operating system starts.",
+            narrow,
+        );
+        if let Some(run) = &app.run {
+            console::show(ui, run);
+        }
+        return;
+    }
+
+    // Real disk: the move happens in the recovery system on the next boot, on the machine's own
+    // screen, not here. Say so plainly and show what that screen will look like.
     header(
         ui,
-        "During the restart",
-        "This is what the computer shows while BootShift works, before any operating system starts.",
+        "Ready to restart",
+        "Everything is prepared. Restart this computer to apply the change.",
         narrow,
     );
-    if let Some(run) = &app.run {
-        console::show(ui, run);
-    }
+    let width = ui.available_width().min(layout::LEDE_MAX);
+    widgets::paragraph(
+        ui,
+        "The move runs in BootShift's recovery system, before any operating system starts, so it \
+         appears on the machine's own screen, not in this window. If the power goes out, just turn \
+         the computer back on; it resumes from the journal by itself. Reopen BootShift afterwards \
+         to see the new layout.",
+        size::LEDE,
+        theme::DIM,
+        width,
+        1.5,
+    );
+    ui.add_space(17.0);
+    bar_caption(ui, "On the machine's screen you'll see", "the recovery console");
+    console::preview(ui);
 }
 
 /* ---------- done ---------- */
