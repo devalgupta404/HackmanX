@@ -12,7 +12,8 @@ pub enum PendingWrites {
     Lost,
     AllLanded,
     /// Each 512-byte piece of every pending write lands or not, independently and in a shuffled
-    /// order. This covers dropped, reordered and torn writes. A seed always gives the same image.
+    /// order, and the piece in flight when the power died may be left as garbage. This covers
+    /// dropped, reordered, torn and garbled writes. A seed always gives the same image.
     Scrambled {
         seed: u64,
     },
@@ -134,8 +135,13 @@ fn scramble_onto(image: &mut [u8], unflushed: &[Op], seed: u64) {
         let j = (rng.next() % (i as u64 + 1)) as usize;
         pieces.swap(i, j);
     }
-    for (start, piece) in pieces {
-        if rng.next() & 1 == 1 {
+    // Picking one past the end means no piece was in flight.
+    let in_flight = (rng.next() % (pieces.len() as u64 + 1)) as usize;
+    for (index, (start, piece)) in pieces.into_iter().enumerate() {
+        if index == in_flight {
+            let garbage: Vec<u8> = (0..piece.len()).map(|_| rng.next() as u8).collect();
+            apply(image, start, &garbage);
+        } else if rng.next() & 1 == 1 {
             apply(image, start, piece);
         }
     }
@@ -244,7 +250,21 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(seen, HashSet::from([0, 1, 2]));
+        assert!(seen.is_superset(&HashSet::from([0, 1, 2])));
+    }
+
+    #[test]
+    fn scrambled_crash_can_garble_the_sector_in_flight() {
+        let mut disk = blank_disk();
+        disk.write_at(0, &[7; SECTOR]).unwrap();
+
+        let garbled = (0..50).any(|seed| {
+            let image = disk.crash_image(1, PendingWrites::Scrambled { seed });
+            let first = sector(&image, 0);
+            first != [0; SECTOR] && first != [7; SECTOR]
+        });
+
+        assert!(garbled);
     }
 
     #[test]
