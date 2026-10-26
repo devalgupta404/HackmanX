@@ -1,0 +1,10 @@
+[package]
+name = "bootshift-core"
+description = "Pure planning logic: layout model, planner, validation, journal codec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "bootshift-disk"
+description = "Block device I/O, crash-simulating test disks, GPT and journal storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+bootshift-core.workspace = true
+
+[lints]
+workspace = true

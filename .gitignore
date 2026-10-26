@@ -1,0 +1,21 @@
+/target/
+
+# Test disk images and VM artifacts
+*.img
+*.qcow2
+*.iso
+*.fd
+/xtask/out/
+
+# GUI
+/gui/node_modules/
+/gui/dist/
+/gui/src-tauri/target/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+.env

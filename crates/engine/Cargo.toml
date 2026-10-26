@@ -1,0 +1,16 @@
+[package]
+name = "bootshift-engine"
+description = "Preflight checks, copier, step executor and verification"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+bootshift-core.workspace = true
+bootshift-disk.workspace = true
+bootshift-fs.workspace = true
+bootshift-boot.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "bootshift-fs"
+description = "Filesystem adapters that drive e2fsprogs, ntfs-3g, btrfs-progs and util-linux"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+bootshift-core.workspace = true
+
+[lints]
+workspace = true

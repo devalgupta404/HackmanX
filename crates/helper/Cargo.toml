@@ -1,0 +1,17 @@
+[package]
+name = "bootshift-helper"
+description = "bootshiftd: the privileged D-Bus service the GUI talks to"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "bootshiftd"
+path = "src/main.rs"
+
+[dependencies]
+bootshift-engine.workspace = true
+
+[lints]
+workspace = true
