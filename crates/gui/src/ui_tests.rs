@@ -146,6 +146,32 @@ fn home_screen_lists_the_goals() {
 }
 
 #[test]
+fn resizing_an_edge_pushes_the_neighbour_and_hover_magnifies() {
+    let mut harness = harness(1440.0);
+    // Drag Windows' right edge outward; the recovery sliver and everything past it slide right.
+    let before = extent(&harness, 4).start;
+    let edge = harness
+        .get_by_label("Resize the end of Windows")
+        .rect()
+        .center();
+    let shift = points(&harness, 10 * GIB);
+    drag(&mut harness, edge, edge + Vec2::new(shift, 0.0));
+    let after = extent(&harness, 4).start;
+    assert!(
+        after > before,
+        "the recovery partition was pushed right, not blocked"
+    );
+    // Hover the tiny EFI sliver so it grows to a readable size.
+    let efi = harness
+        .get_by_label("EFI system partition (after)")
+        .rect()
+        .center();
+    harness.hover_at(efi);
+    harness.run();
+    snapshot(&mut harness, "20-editor-push-magnify");
+}
+
+#[test]
 fn give_space_grows_by_shrinking_a_neighbour() {
     let mut harness = home_harness(1440.0);
     harness.get_by_label("Give a partition more space").click();

@@ -26,6 +26,9 @@ const LEADERS: f32 = 8.0;
 const CAPSULE_GAP: f32 = 6.0;
 const CAPSULE_MAX: f32 = 210.0;
 const HANDLE_MAX: f32 = 10.5;
+/// A hovered block narrower than this grows to it, so a thin partition can be read.
+const MAGNIFY_MIN: f32 = 108.0;
+const MAGNIFY_LIFT: f32 = 6.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Drag {
@@ -46,8 +49,9 @@ struct DragState {
 /// What the user did to the bar this frame.
 #[derive(Default)]
 pub struct Output {
-    /// The partition's new extent, after snapping and clamping.
-    pub edit: Option<(Guid, Extent)>,
+    /// Every partition whose extent changed, after snapping and clamping. A plain move or shrink
+    /// is one entry; resizing an edge into a neighbour pushes it, so there can be several.
+    pub edits: Vec<(Guid, Extent)>,
     pub picked: Option<Guid>,
 }
 
@@ -90,11 +94,30 @@ impl DiskBar<'_> {
         if let Some(selected) = blocks.iter().find(|b| Some(b.guid) == self.selected) {
             paint_selection(ui.painter(), selected);
         }
-        if let Some(strip) = capsules_rect {
-            self.capsules(ui, strip, &blocks, &mut output);
-        }
+        let hovered_block = blocks
+            .iter()
+            .zip(&responses)
+            .find(|(_, r)| {
+                r.body.hovered()
+                    || r.handles
+                        .as_ref()
+                        .is_some_and(|(s, e)| s.hovered() || e.hovered())
+            })
+            .map(|(b, _)| b.guid);
+        let hovered_capsule =
+            capsules_rect.and_then(|strip| self.capsules(ui, strip, &blocks, &mut output));
         if self.editable {
             self.scale(ui);
+        }
+        // A hovered block grows in place to a readable width, above its neighbours, so a thin
+        // partition (or one reached through its capsule) can be seen without moving anything.
+        if self.editable && drag.is_none() {
+            if let Some(block) = hovered_block
+                .or(hovered_capsule)
+                .and_then(|guid| blocks.iter().find(|b| b.guid == guid))
+            {
+                self.magnify(ui, inner, block);
+            }
         }
         output
     }
@@ -315,9 +338,13 @@ impl DiskBar<'_> {
         if let (true, Some(state), Some(pointer_x)) = (response.dragged(), state, pointer_x) {
             if state.guid == guid && state.kind == kind {
                 let delta = f64::from(pointer_x - state.pointer_x) * sectors_per_point;
-                let next = apply(self.layout, &state.origin, guid, kind, state.from, delta);
-                if let Some(extent) = next.filter(|e| self.target.get(&guid) != Some(e)) {
-                    output.edit = Some((guid, extent));
+                let edits: Vec<_> =
+                    apply(self.layout, &state.origin, guid, kind, state.from, delta)
+                        .into_iter()
+                        .filter(|(g, e)| self.target.get(g) != Some(e))
+                        .collect();
+                if !edits.is_empty() {
+                    output.edits = edits;
                 }
             }
         }
@@ -361,8 +388,9 @@ impl DiskBar<'_> {
             .find(|(modifiers, key, _, _)| i.consume_key(*modifiers, *key))
         });
         if let Some((_, _, kind, delta)) = pressed {
-            if let Some(extent) = apply(self.layout, self.target, guid, kind, current, delta) {
-                output.edit = Some((guid, extent));
+            let edits = apply(self.layout, self.target, guid, kind, current, delta);
+            if !edits.is_empty() {
+                output.edits = edits;
             }
         }
     }
@@ -472,7 +500,14 @@ impl DiskBar<'_> {
         painter.galley(size_top, size_galley, size_colour);
     }
 
-    fn capsules(&self, ui: &mut Ui, strip: Rect, blocks: &[Block], output: &mut Output) {
+    fn capsules(
+        &self,
+        ui: &mut Ui,
+        strip: Rect,
+        blocks: &[Block],
+        output: &mut Output,
+    ) -> Option<Guid> {
+        let mut hovered = None;
         let slivers: Vec<(&Partition, &Block)> = blocks
             .iter()
             .filter(|b| b.sliver)
@@ -509,6 +544,9 @@ impl DiskBar<'_> {
             } else {
                 response
             };
+            if response.hovered() {
+                hovered = Some(capsule.guid);
+            }
             if response.clicked() {
                 ui.memory_mut(|m| m.request_focus(Id::unique((self.id, capsule.guid))));
                 output.picked = Some(capsule.guid);
@@ -552,6 +590,7 @@ impl DiskBar<'_> {
                 Stroke::new(1.0, theme::LEADER),
             );
         }
+        hovered
     }
 
     fn capsule(&self, ui: &Ui, partition: &Partition, block: &Block) -> Capsule {
@@ -633,6 +672,50 @@ impl DiskBar<'_> {
             widgets::text_at(painter, align, pos, galley);
         }
     }
+
+    /// Draws `block` enlarged to a legible width, centred on where it sits and lifted above its
+    /// neighbours. Visual only: the partition's real size and the layout are untouched.
+    fn magnify(&self, ui: &Ui, inner: Rect, block: &Block) {
+        let Some(partition) = self.layout.partition(block.guid) else {
+            return;
+        };
+        if block.rect.width() >= MAGNIFY_MIN {
+            return;
+        }
+        let extent = self.extent_of(partition);
+        let centre_x = block.rect.center().x.clamp(
+            inner.left() + MAGNIFY_MIN / 2.0,
+            inner.right() - MAGNIFY_MIN / 2.0,
+        );
+        let rect = Rect::from_center_size(
+            Pos2::new(centre_x, block.rect.center().y),
+            Vec2::new(MAGNIFY_MIN, block.rect.height() + MAGNIFY_LIFT * 2.0),
+        );
+        let painter = ui.painter_at(rect.expand(8.0));
+        painter.rect_filled(
+            rect.translate(Vec2::new(0.0, 2.0)),
+            4,
+            theme::alpha(Color32::from_rgb(4, 4, 6), 0.35),
+        );
+        painter.rect_filled(rect, 4, brighten(theme::block_colour(partition.content)));
+        let used_share = (partition.used.0 as f32 / extent.len.0.max(1) as f32).min(1.0);
+        if used_share > 0.0 {
+            let used = Rect::from_min_size(
+                rect.min,
+                Vec2::new(rect.width() * used_share, rect.height()),
+            );
+            painter.with_clip_rect(rect).rect_filled(
+                used,
+                0,
+                brighten(theme::content_colour(partition.content)),
+            );
+        }
+        if block.locked {
+            hatch(&painter, rect);
+        }
+        painter.rect_stroke(rect, 4, Stroke::new(1.0, theme::SIGNAL), StrokeKind::Inside);
+        self.paint_label(ui, &painter, partition, extent, rect);
+    }
 }
 
 struct Block {
@@ -669,13 +752,15 @@ fn apply(
     kind: Drag,
     from: Extent,
     delta: f64,
-) -> Option<Extent> {
+) -> Vec<(Guid, Extent)> {
     let start = from.start.0 as f64;
     let end = from.end().0 as f64;
+    let one = |extent: Option<Extent>| extent.map(|e| (guid, e)).into_iter().collect();
     match kind {
-        Drag::Move => editing::move_to(layout, origin, guid, start + delta),
-        Drag::Start => editing::set_start(layout, origin, guid, start + delta),
-        Drag::End => editing::set_end(layout, origin, guid, end + delta),
+        Drag::Move => one(editing::move_to(layout, origin, guid, start + delta)),
+        Drag::Start => one(editing::set_start(layout, origin, guid, start + delta)),
+        // The end edge pushes movable neighbours ahead of it, so it can change several partitions.
+        Drag::End => editing::push_end(layout, origin, guid, end + delta),
     }
 }
 
@@ -916,7 +1001,7 @@ mod tests {
             step,
         );
         assert_eq!(
-            moved.map(|e| e.start.0 - swap.extent.start.0),
+            moved.first().map(|(_, e)| e.start.0 - swap.extent.start.0),
             Some(2048 * 1024)
         );
         let linux = &layout.partitions[4];
@@ -928,6 +1013,6 @@ mod tests {
             linux.extent,
             step,
         );
-        assert_eq!(boxed_in, None, "Linux has neighbours on both sides");
+        assert!(boxed_in.is_empty(), "Linux has neighbours on both sides");
     }
 }

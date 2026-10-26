@@ -96,6 +96,78 @@ pub fn set_start(
     changed(current, Extent::new(Lba(start), Sectors(end - start)))
 }
 
+/// Resizes `guid`'s end toward `requested_end`, pushing movable neighbours on the right ahead of
+/// it into the free space beyond them, rather than stopping at the first one. Returns every
+/// partition whose extent changes (the resized one first), or empty when nothing can move. Locked
+/// partitions (the ESP, BitLocker) are immovable walls the push stops against.
+pub fn push_end(
+    layout: &Layout,
+    origin: &Target,
+    guid: Guid,
+    requested_end: f64,
+) -> Vec<(Guid, Extent)> {
+    let (Some(me), Some(partition)) = (origin.get(&guid).copied(), layout.partition(guid)) else {
+        return Vec::new();
+    };
+    let alignment = layout.geometry.alignment.0;
+    let usable_end = layout.geometry.usable.end().0;
+    let start = me.start.0;
+
+    // Right-side partitions in disk order, each flagged by whether it can be pushed.
+    let mut right: Vec<(Guid, Extent, bool)> = origin
+        .iter()
+        .filter(|(other, extent)| **other != guid && extent.start >= me.end())
+        .map(|(other, extent)| {
+            let movable = layout
+                .partition(*other)
+                .is_some_and(|p| p.content.can_move());
+            (*other, *extent, movable)
+        })
+        .collect();
+    right.sort_by_key(|(_, extent, _)| extent.start.0);
+
+    // How far the end can reach once every movable neighbour is shoved as far right as it will
+    // go. Walk right to left: an immovable partition fixes the ceiling at its own start; a movable
+    // one is packed flush against whatever sits to its right.
+    let mut ceiling = usable_end;
+    for (_, extent, movable) in right.iter().rev() {
+        ceiling = if *movable {
+            align_down(ceiling.saturating_sub(extent.len.0), alignment)
+        } else {
+            extent.start.0
+        };
+    }
+
+    let shortest = align_up(start + min_len(layout, partition).0, alignment);
+    let longest = match max_len(partition) {
+        Some(max) => align_down((start + max.0).min(ceiling), alignment),
+        None => align_down(ceiling, alignment),
+    };
+    let Some(end) = clamp(snap(requested_end, alignment), shortest, longest) else {
+        return Vec::new();
+    };
+
+    let mut changes = Vec::new();
+    if end != me.end().0 {
+        changes.push((guid, Extent::new(me.start, Sectors(end - start))));
+    }
+    // Shove the right-side partitions along, each only as far as it must go to clear the one
+    // before it. Gaps that don't need closing are left alone.
+    let mut frontier = end;
+    for (other, extent, movable) in &right {
+        if *movable {
+            let moved_start = extent.start.0.max(frontier);
+            if moved_start != extent.start.0 {
+                changes.push((*other, Extent::new(Lba(moved_start), extent.len)));
+            }
+            frontier = moved_start + extent.len.0;
+        } else {
+            frontier = extent.end().0;
+        }
+    }
+    changes
+}
+
 pub fn is_changed(layout: &Layout, target: &Target, guid: Guid) -> bool {
     match (layout.partition(guid), target.get(&guid)) {
         (Some(partition), Some(after)) => partition.extent != *after,
@@ -536,6 +608,50 @@ mod tests {
             neighbour_bounds(&layout, &target, guid(2)),
             (250 * MIB, 1023 * MIB)
         );
+    }
+
+    fn apply_changes(base: &Target, changes: &[(Guid, Extent)]) -> Target {
+        let mut after = base.clone();
+        for (guid, extent) in changes {
+            after.insert(*guid, *extent);
+        }
+        after
+    }
+
+    #[test]
+    fn resizing_an_end_pushes_a_movable_neighbour_along() {
+        let layout = layout(vec![
+            partition(1, Content::Ext4, 100, 100),
+            partition(2, Content::Ext4, 200, 100),
+        ]);
+        let base = target_of(&layout);
+        let after = apply_changes(&base, &push_end(&layout, &base, guid(1), at_mib(400.0)));
+        assert_eq!(after[&guid(1)], mib_extent(100, 300));
+        assert_eq!(
+            after[&guid(2)],
+            mib_extent(400, 100),
+            "the neighbour slid right"
+        );
+        assert_eq!(validate(&layout, &after), Ok(()));
+    }
+
+    #[test]
+    fn the_push_stops_against_a_locked_partition() {
+        let layout = layout(vec![
+            partition(1, Content::Ext4, 100, 100),
+            partition(2, Content::Ext4, 200, 100),
+            partition(3, Content::EfiSystem, 500, 100),
+        ]);
+        let base = target_of(&layout);
+        let after = apply_changes(&base, &push_end(&layout, &base, guid(1), at_mib(900.0)));
+        assert_eq!(
+            after[&guid(2)],
+            mib_extent(400, 100),
+            "shoved flush against the ESP"
+        );
+        assert_eq!(after[&guid(1)], mib_extent(100, 300));
+        assert_eq!(after[&guid(3)], mib_extent(500, 100), "the ESP never moves");
+        assert_eq!(validate(&layout, &after), Ok(()));
     }
 
     #[test]

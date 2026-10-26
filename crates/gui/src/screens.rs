@@ -103,7 +103,7 @@ fn arrange(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
             if let Some(guid) = output.picked {
                 actions.push(Action::Pick(guid));
             }
-            if let Some((guid, extent)) = output.edit {
+            for (guid, extent) in output.edits {
                 actions.push(Action::Edit(guid, extent));
             }
         }
