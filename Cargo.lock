@@ -483,6 +483,8 @@ dependencies = [
  "bootshift-migrate-net",
  "bootshift-migrate-receive",
  "bootshift-migrate-testkit",
+ "bootshift-migrate-track",
+ "log",
  "thiserror 2.0.21",
 ]
 

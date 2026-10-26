@@ -13,8 +13,10 @@ workspace = true
 [dependencies]
 thiserror.workspace = true
 blake3.workspace = true
+log.workspace = true
 bootshift-disk.workspace = true
 bootshift-migrate-core = { path = "../core" }
+bootshift-migrate-track = { path = "../track" }
 
 [dev-dependencies]
 bootshift-migrate-testkit = { path = "../testkit" }

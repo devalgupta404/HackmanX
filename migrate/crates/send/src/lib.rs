@@ -7,5 +7,7 @@
 //! mirror backends and the quiesce path land in plan.md Phases 6, 7.
 
 pub mod compare;
+pub mod passes;
 
 pub use compare::{SourceChunk, compare_pass};
+pub use passes::{Outcome, SendError, Transfer, Transferred, run_passes};
