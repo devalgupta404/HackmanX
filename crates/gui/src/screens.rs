@@ -441,7 +441,7 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
     // description slides down and fades in, so there is less text until you reach for it.
     let reveal = ui
         .ctx()
-        .animate_bool_with_time(ui.id().with(("goal-card", goal.title())), hovered, 0.13);
+        .animate_bool_with_time(response.id, hovered, 0.13);
 
     // Lay the text out before borrowing the painter; the blurb fades with the reveal.
     let title = widgets::galley(ui, goal.title(), Face::Sans(Weight::SemiBold), 16.0, theme::INK);
