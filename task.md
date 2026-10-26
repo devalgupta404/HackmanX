@@ -437,10 +437,16 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 13 — GUI (Tauri 2)
 
-- [ ] **13.1** Disk bar view: each partition labelled with name, size and free space. Drag edges or whole partitions to build the target layout, snapped to 1 MiB.
-- [ ] **13.2** Plan preview ("Copies 61 GB, about 4 minutes, one restart"), and preflight results each with its fix text.
-- [ ] **13.3** Backup prompt and partition-table backup download.
-- [ ] **13.4** Apply → restart. Post-restart summary, including the `reagentc` step when the recovery partition moved and the one-time chkdsk note for NTFS.
+- [~] **13.1** (frontend done; the Tauri shell waits on webkit2gtk/GTK dev packages) The disk bar: plain TypeScript + Vite in `gui/`.
+  - "Now" and "After the restart" bars; partitions are blocks sized to the disk, with a used-space strip.
+  - Drag a block to move it, drag its edges to resize; arrow keys move 1 GiB, Shift+arrows resize. Everything snaps to 1 MiB.
+  - Partitions smaller than 1% of the disk are drawn above their neighbours so they stay visible. The EFI system and BitLocker partitions are locked.
+  - `editing.ts` holds the pure clamping rules mirroring `core::validate` (alignment, minimum size, can grow/shrink, no overlap, stay on the disk), with 12 Vitest tests.
+  - Driven in a browser with Playwright against the demo backend: a keyboard shrink, a keyboard move and a mouse edge drag each clamp correctly, and the plan list updates. No console errors.
+- [~] **13.2** (frontend done) Plan preview with the same wording as the CLI and a copy estimate ("Copies about 90.5 GiB, during one restart"). Refusals and unavailable steps are shown with their fixes.
+- [~] **13.3** (frontend done) Backup confirmation checkbox. Apply is enabled only when the plan has steps, nothing is unavailable, the checks passed and the box is ticked. The table-backup download is still to do.
+- [ ] **13.4** Apply → restart; post-restart summary, including the `reagentc` step when the recovery partition moved and the one-time chkdsk note for NTFS.
+- [ ] **13.5** Tauri 2 shell (`gui/src-tauri`): commands `list_disks`, `probe`, `plan`, `check` and `apply` forward to `org.bootshift.Helper1` over the system D-Bus (a zbus proxy). Needs `libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev` to build.
 
 ### Phase 14 — Docs and packaging
 

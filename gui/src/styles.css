@@ -1,0 +1,225 @@
+:root {
+  color-scheme: light dark;
+  --background: #fafaf9;
+  --surface: #ffffff;
+  --text: #1c1917;
+  --muted: #57534e;
+  --border: #d6d3d1;
+  --accent: #2563eb;
+  --danger: #b91c1c;
+  --ntfs: #3b82f6;
+  --ext4: #16a34a;
+  --btrfs: #0891b2;
+  --xfs: #7c3aed;
+  --swap: #a16207;
+  --system: #78716c;
+  --unknown: #a8a29e;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1c1917;
+    --surface: #292524;
+    --text: #f5f5f4;
+    --muted: #a8a29e;
+    --border: #44403c;
+    --accent: #60a5fa;
+    --danger: #f87171;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+main {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 2rem;
+}
+
+.notice {
+  margin-top: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.disk-bar {
+  position: relative;
+  height: 4.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: repeating-linear-gradient(45deg, transparent 0 6px, var(--border) 6px 7px);
+  overflow: hidden;
+}
+
+/* Tiny partitions, such as the EFI system partition on a large disk, stay visible. */
+.partition {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 6px;
+  box-sizing: border-box;
+  padding: 0.35rem 0.5rem;
+  border-right: 2px solid var(--background);
+  background: var(--unknown);
+  color: #fff;
+  font-size: 0.8rem;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: grab;
+  touch-action: none;
+}
+
+.partition.tiny {
+  z-index: 1;
+  padding: 0;
+  color: transparent;
+}
+
+.partition:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.partition.locked {
+  cursor: not-allowed;
+  background-image: repeating-linear-gradient(135deg, transparent 0 8px, rgb(0 0 0 / 0.15) 8px 10px);
+}
+
+.partition .used {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 0.3rem;
+  background: rgb(255 255 255 / 0.6);
+}
+
+.partition .name,
+.partition .size {
+  position: relative;
+  display: block;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.partition .size {
+  opacity: 0.85;
+}
+
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0.6rem;
+  cursor: ew-resize;
+}
+
+.handle.start {
+  left: 0;
+}
+
+.handle.end {
+  right: 0;
+}
+
+.handle:hover {
+  background: rgb(255 255 255 / 0.35);
+}
+
+.content-ntfs {
+  background-color: var(--ntfs);
+}
+.content-ext4 {
+  background-color: var(--ext4);
+}
+.content-btrfs {
+  background-color: var(--btrfs);
+}
+.content-xfs {
+  background-color: var(--xfs);
+}
+.content-swap {
+  background-color: var(--swap);
+}
+.content-efisystem,
+.content-bitlocker {
+  background-color: var(--system);
+}
+
+button {
+  margin-top: 0.75rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.go h2 {
+  flex-basis: 100%;
+}
+
+.confirm {
+  margin-top: 0.75rem;
+}
+
+.problems {
+  padding-left: 1.2rem;
+  color: var(--danger);
+}
+
+.problems .fix {
+  margin: 0.1rem 0 0.5rem;
+  color: var(--muted);
+}
+
+#status {
+  margin-top: 1.5rem;
+  color: var(--muted);
+}

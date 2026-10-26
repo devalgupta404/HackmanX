@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>BootShift</title>
+  </head>
+  <body>
+    <header>
+      <h1>BootShift</h1>
+      <label>
+        Disk
+        <select id="disk"></select>
+      </label>
+    </header>
+
+    <main>
+      <p id="demo-notice" class="notice" hidden>Showing demo data. Nothing here touches a real disk.</p>
+
+      <section aria-labelledby="now-title">
+        <h2 id="now-title">Now</h2>
+        <div id="before"></div>
+      </section>
+
+      <section aria-labelledby="after-title">
+        <h2 id="after-title">After the restart</h2>
+        <div id="after"></div>
+        <button id="reset" type="button" disabled>Start over</button>
+      </section>
+
+      <section aria-labelledby="steps-title">
+        <h2 id="steps-title">What BootShift will do</h2>
+        <ol id="steps"></ol>
+        <p id="summary"></p>
+        <ul id="problems" class="problems" aria-live="polite"></ul>
+      </section>
+
+      <section aria-labelledby="go-title" class="go">
+        <h2 id="go-title">Apply</h2>
+        <button id="check" type="button" disabled>Run the safety checks</button>
+        <label class="confirm">
+          <input id="backed-up" type="checkbox" />
+          My important files are backed up
+        </label>
+        <button id="apply" type="button" class="primary" disabled>Apply and restart later</button>
+      </section>
+
+      <p id="status" role="status"></p>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
