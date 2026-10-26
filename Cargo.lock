@@ -77,6 +77,8 @@ version = "0.1.0"
 dependencies = [
  "bootshift-core",
  "gptman",
+ "rustix",
+ "tempfile",
  "thiserror",
 ]
 
@@ -90,6 +92,7 @@ dependencies = [
  "bootshift-disk",
  "bootshift-fs",
  "proptest",
+ "tempfile",
  "thiserror",
 ]
 

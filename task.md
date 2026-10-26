@@ -270,9 +270,11 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - `with_partitions(layout, removable)` keeps every partition's slot, GUIDs, type, name and attributes. It refuses to drop an entry the layout doesn't describe unless it is listed as removable (a swap being recreated). Recreated entries return to their own slot.
   - `write_over(device, previous)` writes only the sectors that differ from the table it was derived from: backup copy, flush, primary copy, flush. The protective MBR is never rewritten.
   - The journal will keep the original image, so a resume rebuilds the same target from the same base.
-- [ ] **6.2** `disk::RealDevice` and the kernel refresh.
-  - The device: `O_DIRECT` with an aligned bounce buffer, `fdatasync`, and BLKGETSIZE64/BLKSSZGET (or file size, for image files).
-  - Refresh the kernel's view with BLKPG per partition (delete, add, resize). Never use BLKRRPART while anything is open.
+- [~] **6.2** (device done; kernel refresh pending on `fs::run`) `disk::RealDevice` and the kernel refresh.
+  - [x] The device: `O_DIRECT` through an aligned bounce buffer (no `unsafe`), `fdatasync`, BLKSSZGET via `rustix`, size from seeking to the end.
+    - Writable block devices are opened `O_EXCL`, so the kernel refuses a disk with a mounted partition.
+    - Tested on image files, including the copier and journal end to end (`crates/engine/tests/copier_real_device.rs`).
+  - [ ] Refresh the kernel's view with `partx --update`, which uses BLKPG per partition, through `fs::run`. Never use BLKRRPART while anything is open.
 - [x] **6.3** Crash tests (`crates/disk/tests/gpt.rs`).
   - Every crash point × lost / landed / 32 scrambled outcomes: the table always reads as the old or the new one, and rewriting from the original finishes with both copies holding the target.
   - Also tested: identity kept, MBR untouched, undescribed partitions refused, slot changes refused, overlap refused, swap removed and recreated in its slot.
