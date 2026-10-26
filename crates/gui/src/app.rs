@@ -82,11 +82,17 @@ impl Goal {
             Goal::InstallOs => {
                 "Make room for Linux or another OS. BootShift frees a clean block for the installer."
             }
-            Goal::GiveSpace => "Pick the one that's full. BootShift finds nearby space and grows it.",
+            Goal::GiveSpace => {
+                "Pick the one that's full. BootShift finds nearby space and grows it."
+            }
             Goal::FreeSpace => "Carve some room off a roomy partition to use elsewhere.",
-            Goal::MovePartition => "Slide one along the disk; its contents go nowhere, only its place.",
+            Goal::MovePartition => {
+                "Slide one along the disk; its contents go nowhere, only its place."
+            }
             Goal::CleanUp => "Remove or reformat a partition you no longer need.",
-            Goal::DoItMyself => "The full disk editor: drag partitions and edges exactly where you want.",
+            Goal::DoItMyself => {
+                "The full disk editor: drag partitions and edges exactly where you want."
+            }
         }
     }
 }
@@ -389,7 +395,12 @@ impl App {
         let layout = &probed.layout;
         let mut target = probed.target.clone();
         if let (Some(goal), Some(guid)) = (self.goal, self.goal_partition) {
-            if let Some(extent) = self.goal_extent(layout, &target, goal, guid) {
+            if goal == Goal::GiveSpace {
+                // Growing may take space from a neighbour, so it changes more than one partition.
+                let current_len = layout.partition(guid).map_or(0, |p| p.extent.len.0);
+                let goal_len = current_len + self.goal_amount.0;
+                target = editing::grow_with_neighbours(layout, &target, guid, goal_len);
+            } else if let Some(extent) = self.goal_extent(layout, &target, goal, guid) {
                 target.insert(guid, extent);
             }
         }
@@ -397,11 +408,19 @@ impl App {
     }
 
     /// The new extent of the goal's partition, or `None` to leave it unchanged.
-    fn goal_extent(&self, layout: &Layout, target: &Target, goal: Goal, guid: Guid) -> Option<Extent> {
+    fn goal_extent(
+        &self,
+        layout: &Layout,
+        target: &Target,
+        goal: Goal,
+        guid: Guid,
+    ) -> Option<Extent> {
         let current = *target.get(&guid)?;
         let amount = self.goal_amount.0 as f64;
         match goal {
-            Goal::GiveSpace => editing::set_end(layout, target, guid, current.end().0 as f64 + amount),
+            // GiveSpace is built by `grow_with_neighbours` in `recompute_goal_target`, because it
+            // can change a neighbour too, not just this partition.
+            Goal::GiveSpace => None,
             Goal::FreeSpace | Goal::InstallOs => {
                 editing::set_end(layout, target, guid, current.end().0 as f64 - amount)
             }
@@ -538,7 +557,8 @@ impl App {
         if self.is_demo() {
             let bytes = self.plan.as_ref().map_or(0, |p| p.copy_bytes);
             self.run = Some(RecoveryRun::new(bytes.max(1)));
-            self.status = "Demo: preview what the restart looks like, power cut included.".to_string();
+            self.status =
+                "Demo: preview what the restart looks like, power cut included.".to_string();
         } else {
             self.run = None;
             self.status = "Everything is ready. Restart the computer to begin.".to_string();

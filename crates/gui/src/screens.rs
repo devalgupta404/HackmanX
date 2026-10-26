@@ -410,7 +410,12 @@ fn home(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
     );
     goal_card(ui, app, Goal::InstallOs, true, actions);
     ui.add_space(12.0);
-    let middle = [Goal::GiveSpace, Goal::FreeSpace, Goal::MovePartition, Goal::CleanUp];
+    let middle = [
+        Goal::GiveSpace,
+        Goal::FreeSpace,
+        Goal::MovePartition,
+        Goal::CleanUp,
+    ];
     if narrow {
         for goal in middle {
             goal_card(ui, app, goal, false, actions);
@@ -451,12 +456,16 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
 
     // Resting, the card shows only its title, centred. On hover the title rises and the
     // description slides down and fades in, so there is less text until you reach for it.
-    let reveal = ui
-        .ctx()
-        .animate_bool_with_time(response.id, hovered, 0.13);
+    let reveal = ui.ctx().animate_bool_with_time(response.id, hovered, 0.13);
 
     // Lay the text out before borrowing the painter; the blurb fades with the reveal.
-    let title = widgets::galley(ui, goal.title(), Face::Sans(Weight::SemiBold), 16.0, theme::INK);
+    let title = widgets::galley(
+        ui,
+        goal.title(),
+        Face::Sans(Weight::SemiBold),
+        16.0,
+        theme::INK,
+    );
     let chip = Rect::from_min_size(
         rect.left_top() + Vec2::new(16.0, (height - if featured { 46.0 } else { 42.0 }) / 2.0),
         Vec2::splat(if featured { 46.0 } else { 42.0 }),
@@ -477,7 +486,8 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
         Goal::DoItMyself => Some(("ADVANCED", theme::FAINT)),
         _ => None,
     };
-    let tag = tag.map(|(text, colour)| widgets::galley(ui, text, Face::Mono(Weight::Medium), 9.5, colour));
+    let tag = tag
+        .map(|(text, colour)| widgets::galley(ui, text, Face::Mono(Weight::Medium), 9.5, colour));
 
     let painter = ui.painter();
     let radius = CornerRadius::same(10);
@@ -589,7 +599,10 @@ fn goal_screen(ui: &mut Ui, app: &App, goal: Goal, actions: &mut Vec<Action>, na
         return;
     }
 
-    let any = layout.partitions.iter().any(|p| goal_applies(goal, p.content));
+    let any = layout
+        .partitions
+        .iter()
+        .any(|p| goal_applies(goal, p.content));
     if !any {
         let width = ui.available_width().min(layout::LEDE_MAX);
         widgets::paragraph(
@@ -662,10 +675,19 @@ fn amount_caption(goal: Goal) -> &'static str {
     }
 }
 
-fn partition_row(ui: &mut Ui, app: &App, goal: Goal, partition: &Partition, actions: &mut Vec<Action>) {
+fn partition_row(
+    ui: &mut Ui,
+    app: &App,
+    goal: Goal,
+    partition: &Partition,
+    actions: &mut Vec<Action>,
+) {
     let applies = goal_applies(goal, partition.content);
     let selected = app.goal_partition == Some(partition.unique_guid);
-    let sector = app.probed.as_ref().map_or(512, |p| p.layout.geometry.sector_size);
+    let sector = app
+        .probed
+        .as_ref()
+        .map_or(512, |p| p.layout.geometry.sector_size);
     let width = ui.available_width();
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 54.0), Sense::click());
     let hovered = response.hovered() && applies;
@@ -686,13 +708,30 @@ fn partition_row(ui: &mut Ui, app: &App, goal: Goal, partition: &Partition, acti
             bootshift_core::units::format_bytes(partition.extent.len.to_bytes(sector)),
         )
     } else {
-        format!("{} empty", bootshift_core::units::format_bytes(partition.extent.len.to_bytes(sector)))
+        format!(
+            "{} empty",
+            bootshift_core::units::format_bytes(partition.extent.len.to_bytes(sector))
+        )
     };
-    let right = widgets::galley(ui, right_text, Face::Mono(Weight::Regular), 11.5, theme::DIM);
+    let right = widgets::galley(
+        ui,
+        right_text,
+        Face::Mono(Weight::Regular),
+        11.5,
+        theme::DIM,
+    );
 
     let painter = ui.painter();
     let radius = CornerRadius::same(8);
-    painter.rect_filled(rect, radius, if selected { theme::mix(theme::SIGNAL, 0.07, theme::DECK_HIGH) } else { theme::DECK_HIGH });
+    painter.rect_filled(
+        rect,
+        radius,
+        if selected {
+            theme::mix(theme::SIGNAL, 0.07, theme::DECK_HIGH)
+        } else {
+            theme::DECK_HIGH
+        },
+    );
     let border = if selected {
         theme::SIGNAL
     } else if hovered {
@@ -703,9 +742,23 @@ fn partition_row(ui: &mut Ui, app: &App, goal: Goal, partition: &Partition, acti
     painter.rect_stroke(rect, radius, Stroke::new(1.0, border), StrokeKind::Inside);
 
     let sw = Rect::from_min_size(rect.left_top() + Vec2::new(14.0, 21.0), Vec2::splat(12.0));
-    painter.rect_filled(sw, CornerRadius::same(3), theme::content_colour(partition.content));
-    widgets::text_at(painter, Align2::LEFT_CENTER, Pos2::new(sw.right() + 13.0, rect.center().y), name);
-    widgets::text_at(painter, Align2::RIGHT_CENTER, Pos2::new(rect.right() - 16.0, rect.center().y), right);
+    painter.rect_filled(
+        sw,
+        CornerRadius::same(3),
+        theme::content_colour(partition.content),
+    );
+    widgets::text_at(
+        painter,
+        Align2::LEFT_CENTER,
+        Pos2::new(sw.right() + 13.0, rect.center().y),
+        name,
+    );
+    widgets::text_at(
+        painter,
+        Align2::RIGHT_CENTER,
+        Pos2::new(rect.right() - 16.0, rect.center().y),
+        right,
+    );
 
     if applies {
         if hovered {
@@ -719,7 +772,14 @@ fn partition_row(ui: &mut Ui, app: &App, goal: Goal, partition: &Partition, acti
     ui.add_space(8.0);
 }
 
-fn amount_pills(ui: &mut Ui, app: &App, probed: &crate::protocol::Probed, goal: Goal, guid: Guid, actions: &mut Vec<Action>) {
+fn amount_pills(
+    ui: &mut Ui,
+    app: &App,
+    probed: &crate::protocol::Probed,
+    goal: Goal,
+    guid: Guid,
+    actions: &mut Vec<Action>,
+) {
     let layout = &probed.layout;
     let sector = layout.geometry.sector_size;
     let base = &probed.target;
@@ -728,11 +788,14 @@ fn amount_pills(ui: &mut Ui, app: &App, probed: &crate::protocol::Probed, goal: 
     let Some(cur) = layout.partition(guid).map(|p| p.extent) else {
         return;
     };
-    let far = match goal {
-        Goal::GiveSpace => crate::editing::set_end(layout, base, guid, cur.end().0 as f64 + 1e18),
-        _ => crate::editing::set_end(layout, base, guid, cur.start.0 as f64),
+    let max = match goal {
+        // Growing can pull from a neighbour, so its ceiling is more than the free space alone.
+        Goal::GiveSpace => crate::editing::grow_capacity(layout, base, guid).0,
+        _ => {
+            let far = crate::editing::set_end(layout, base, guid, cur.start.0 as f64);
+            far.map_or(0, |ext| cur.len.0.abs_diff(ext.len.0))
+        }
     };
-    let max = far.map_or(0, |ext| cur.len.0.abs_diff(ext.len.0));
     if max == 0 {
         let galley = widgets::galley(
             ui,
@@ -761,7 +824,11 @@ fn amount_pills(ui: &mut Ui, app: &App, probed: &crate::protocol::Probed, goal: 
         for (index, &amount) in amounts.iter().enumerate() {
             let is_max = index == amounts.len() - 1;
             let size = format_bytes(amount * sector as u64);
-            let label = if is_max { format!("Max · {size}") } else { size };
+            let label = if is_max {
+                format!("Max · {size}")
+            } else {
+                size
+            };
             let on = app.goal_amount.0.abs_diff(amount) < GIB_SECTORS / 2;
             let kind = if on { Kind::Primary } else { Kind::Secondary };
             if widgets::button(ui, &label, kind, true).clicked() {
@@ -775,10 +842,32 @@ fn move_pills(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
         let left_on = app.goal_move_left;
-        if widgets::button(ui, "Toward the start", if left_on { Kind::Primary } else { Kind::Secondary }, true).clicked() {
+        if widgets::button(
+            ui,
+            "Toward the start",
+            if left_on {
+                Kind::Primary
+            } else {
+                Kind::Secondary
+            },
+            true,
+        )
+        .clicked()
+        {
             actions.push(Action::GoalMove(true));
         }
-        if widgets::button(ui, "Toward the end", if left_on { Kind::Secondary } else { Kind::Primary }, true).clicked() {
+        if widgets::button(
+            ui,
+            "Toward the end",
+            if left_on {
+                Kind::Secondary
+            } else {
+                Kind::Primary
+            },
+            true,
+        )
+        .clicked()
+        {
             actions.push(Action::GoalMove(false));
         }
     });

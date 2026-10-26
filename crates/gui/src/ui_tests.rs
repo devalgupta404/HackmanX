@@ -8,7 +8,7 @@ use eframe::egui::{Key, Modifiers, Pos2, Vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
-use crate::app::{App, Screen};
+use crate::app::{App, Goal, Screen};
 use crate::backend::Worker;
 use crate::demo::{DemoBackend, demo_layout};
 use crate::recovery_run::Phase;
@@ -36,6 +36,20 @@ fn harness(width: f32) -> Harness<'static, App> {
 
 fn guid(number: u32) -> Guid {
     demo_layout().partitions[number as usize - 1].unique_guid
+}
+
+/// A harness left on the home screen, before any goal is chosen.
+fn home_harness(width: f32) -> Harness<'static, App> {
+    let mut harness = Harness::builder()
+        .with_size(Vec2::new(width, 900.0))
+        .with_step_dt(STEP)
+        .with_max_steps(2_000)
+        .build_ui_state(
+            |ui, app: &mut App| app.frame(ui),
+            App::new(Worker::inline(Box::new(DemoBackend::new()))),
+        );
+    harness.run_steps(3);
+    harness
 }
 
 fn seconds(harness: &mut Harness<'_, App>, seconds: f32) {
@@ -119,15 +133,7 @@ fn arrange_the_demo_story(harness: &mut Harness<'_, App>) {
 
 #[test]
 fn home_screen_lists_the_goals() {
-    let mut harness = Harness::builder()
-        .with_size(Vec2::new(1440.0, 900.0))
-        .with_step_dt(STEP)
-        .with_max_steps(2_000)
-        .build_ui_state(
-            |ui, app: &mut App| app.frame(ui),
-            App::new(Worker::inline(Box::new(DemoBackend::new()))),
-        );
-    harness.run_steps(3);
+    let mut harness = home_harness(1440.0);
     assert_eq!(harness.state().screen, Screen::Home);
     harness.get_by_label("Install an operating system");
     harness.get_by_label("Do it myself");
@@ -135,8 +141,50 @@ fn home_screen_lists_the_goals() {
     harness.get_by_label("Install an operating system").click();
     harness.run_steps(4);
     assert_eq!(harness.state().screen, Screen::Arrange);
-    assert_eq!(harness.state().goal, Some(crate::app::Goal::InstallOs));
+    assert_eq!(harness.state().goal, Some(Goal::InstallOs));
     snapshot(&mut harness, "01-goal-install");
+}
+
+#[test]
+fn give_space_grows_by_shrinking_a_neighbour() {
+    let mut harness = home_harness(1440.0);
+    harness.get_by_label("Give a partition more space").click();
+    harness.run_steps(4);
+    assert_eq!(harness.state().screen, Screen::Arrange);
+    assert_eq!(harness.state().goal, Some(Goal::GiveSpace));
+
+    let app = harness.state();
+    let grown_guid = app.goal_partition.expect("a default partition to grow");
+    let probed = app.probed.as_ref().expect("a disk");
+    let cap = crate::editing::grow_capacity(&probed.layout, &probed.target, grown_guid).0;
+    assert!(cap > 0, "there is room to grow by shrinking a neighbour");
+    let sector = probed.layout.geometry.sector_size;
+    let max_label = format!(
+        "Max · {}",
+        bootshift_core::units::format_bytes(cap * sector as u64)
+    );
+    snapshot(&mut harness, "10-goal-give");
+
+    harness.get_by_label(&max_label).click();
+    harness.run_steps(4);
+    let app = harness.state();
+    let before = demo_layout()
+        .partition(grown_guid)
+        .expect("the partition")
+        .extent
+        .len
+        .0;
+    assert!(
+        app.target[&grown_guid].len.0 > before,
+        "the chosen partition grew"
+    );
+    let paid = demo_layout().partitions.iter().any(|p| {
+        app.target
+            .get(&p.unique_guid)
+            .is_some_and(|e| e.len.0 < p.extent.len.0)
+    });
+    assert!(paid, "a neighbour gave up the space");
+    snapshot(&mut harness, "11-goal-give-grown");
 }
 
 #[test]

@@ -126,6 +126,148 @@ pub fn neighbour_bounds(layout: &Layout, target: &Target, guid: Guid) -> (u64, u
     (left, right)
 }
 
+/// Grows `guid` toward `goal_len` sectors: into free space first, then, if that isn't enough, by
+/// shrinking and shifting a resizable neighbour, on the right then the left. Returns the whole
+/// changed target. Every step goes through the same clamps as a drag, so the result is one
+/// `validate` accepts, and the helper checks it again before planning.
+pub fn grow_with_neighbours(layout: &Layout, base: &Target, guid: Guid, goal_len: u64) -> Target {
+    let mut target = base.clone();
+    if !layout.partition(guid).is_some_and(|p| p.content.can_grow()) {
+        return target;
+    }
+    grow_rightward(layout, &mut target, guid, goal_len);
+    grow_leftward(layout, &mut target, guid, goal_len);
+    target
+}
+
+/// How far `guid` can grow, in sectors added, taking free space and shrinking resizable
+/// neighbours as far as they will go.
+pub fn grow_capacity(layout: &Layout, base: &Target, guid: Guid) -> Sectors {
+    let before = len_of(base, guid);
+    let grown = grow_with_neighbours(layout, base, guid, u64::MAX);
+    Sectors(len_of(&grown, guid).saturating_sub(before))
+}
+
+fn grow_rightward(layout: &Layout, target: &mut Target, guid: Guid, goal_len: u64) {
+    extend_end(layout, target, guid, goal_len);
+    if len_of(target, guid) >= goal_len {
+        return;
+    }
+    let Some(neighbour) = right_neighbour(target, guid) else {
+        return;
+    };
+    if !layout
+        .partition(neighbour)
+        .is_some_and(|p| p.content.can_shrink() && p.content.can_move())
+    {
+        return;
+    }
+    let Some(before) = target.get(&neighbour).copied() else {
+        return;
+    };
+    let deficit = goal_len.saturating_sub(len_of(target, guid));
+    // Shrink the neighbour from its end, then slide it right so it ends where it did. That frees
+    // the gap on our side to grow into.
+    if let Some(shrunk) = set_end(
+        layout,
+        target,
+        neighbour,
+        before.end().0.saturating_sub(deficit) as f64,
+    ) {
+        target.insert(neighbour, shrunk);
+    }
+    let new_len = len_of(target, neighbour);
+    if let Some(moved) = move_to(
+        layout,
+        target,
+        neighbour,
+        before.end().0.saturating_sub(new_len) as f64,
+    ) {
+        target.insert(neighbour, moved);
+    }
+    extend_end(layout, target, guid, goal_len);
+}
+
+fn grow_leftward(layout: &Layout, target: &mut Target, guid: Guid, goal_len: u64) {
+    if len_of(target, guid) >= goal_len {
+        return;
+    }
+    extend_start(layout, target, guid, goal_len);
+    if len_of(target, guid) >= goal_len {
+        return;
+    }
+    let Some(neighbour) = left_neighbour(target, guid) else {
+        return;
+    };
+    if !layout
+        .partition(neighbour)
+        .is_some_and(|p| p.content.can_shrink())
+    {
+        return;
+    }
+    let Some(before) = target.get(&neighbour).copied() else {
+        return;
+    };
+    let deficit = goal_len.saturating_sub(len_of(target, guid));
+    // Shrink the left neighbour from its end; the freed space lands right next to us, so we only
+    // have to pull our start over it. No move is needed.
+    if let Some(shrunk) = set_end(
+        layout,
+        target,
+        neighbour,
+        before.end().0.saturating_sub(deficit) as f64,
+    ) {
+        target.insert(neighbour, shrunk);
+    }
+    extend_start(layout, target, guid, goal_len);
+}
+
+/// Pushes `guid`'s end out to reach `goal_len`, as far as the clamps allow.
+fn extend_end(layout: &Layout, target: &mut Target, guid: Guid, goal_len: u64) {
+    let Some(current) = target.get(&guid).copied() else {
+        return;
+    };
+    let want = current.start.0.saturating_add(goal_len);
+    if let Some(extent) = set_end(layout, target, guid, want as f64) {
+        target.insert(guid, extent);
+    }
+}
+
+/// Pulls `guid`'s start back to reach `goal_len`, as far as the clamps allow.
+fn extend_start(layout: &Layout, target: &mut Target, guid: Guid, goal_len: u64) {
+    let Some(current) = target.get(&guid).copied() else {
+        return;
+    };
+    let want = current.end().0.saturating_sub(goal_len);
+    if let Some(extent) = set_start(layout, target, guid, want as f64) {
+        target.insert(guid, extent);
+    }
+}
+
+/// The partition nearest to the right of `guid` in the target, if any.
+fn right_neighbour(target: &Target, guid: Guid) -> Option<Guid> {
+    let me = *target.get(&guid)?;
+    target
+        .iter()
+        .filter(|(other, extent)| **other != guid && extent.start >= me.end())
+        .min_by_key(|(_, extent)| extent.start.0)
+        .map(|(other, _)| *other)
+}
+
+/// The partition nearest to the left of `guid` in the target, if any.
+fn left_neighbour(target: &Target, guid: Guid) -> Option<Guid> {
+    let me = *target.get(&guid)?;
+    target
+        .iter()
+        .filter(|(other, extent)| **other != guid && extent.end() <= me.start)
+        .max_by_key(|(_, extent)| extent.end().0)
+        .map(|(other, _)| *other)
+}
+
+fn len_of(target: &Target, guid: Guid) -> u64 {
+    target.get(&guid).map_or(0, |extent| extent.len.0)
+}
+
 fn editable<'a>(
     layout: &'a Layout,
     target: &Target,
@@ -394,6 +536,48 @@ mod tests {
             neighbour_bounds(&layout, &target, guid(2)),
             (250 * MIB, 1023 * MIB)
         );
+    }
+
+    #[test]
+    fn growing_pulls_space_from_a_shrinkable_right_neighbour() {
+        // A full Btrfs partition butted up against a roomy ext4 one, no gap between them.
+        let layout = layout(vec![
+            partition(1, Content::Btrfs, 100, 100),
+            partition(2, Content::Ext4, 200, 200),
+        ]);
+        let base = target_of(&layout);
+        // Asking for 250 MiB needs 150 MiB more than it has; that can only come from neighbour 2.
+        let grown = grow_with_neighbours(&layout, &base, guid(1), 250 * MIB);
+        assert!(len_of(&grown, guid(1)) >= 250 * MIB);
+        assert!(len_of(&grown, guid(2)) < 200 * MIB);
+        assert_eq!(validate(&layout, &grown), Ok(()));
+    }
+
+    #[test]
+    fn growing_takes_free_space_before_touching_a_neighbour() {
+        // 50 MiB gap between the two; growing by 40 MiB should leave the neighbour untouched.
+        let layout = layout(vec![
+            partition(1, Content::Btrfs, 100, 100),
+            partition(2, Content::Ext4, 250, 100),
+        ]);
+        let base = target_of(&layout);
+        let grown = grow_with_neighbours(&layout, &base, guid(1), 140 * MIB);
+        assert_eq!(len_of(&grown, guid(1)), 140 * MIB);
+        assert_eq!(len_of(&grown, guid(2)), 100 * MIB);
+        assert_eq!(validate(&layout, &grown), Ok(()));
+    }
+
+    #[test]
+    fn grow_capacity_never_exceeds_what_actually_fits() {
+        let layout = layout(vec![
+            partition(1, Content::Btrfs, 100, 100),
+            partition(2, Content::Ext4, 200, 200),
+        ]);
+        let base = target_of(&layout);
+        let capacity = grow_capacity(&layout, &base, guid(1)).0;
+        let grown = grow_with_neighbours(&layout, &base, guid(1), 100 * MIB + capacity);
+        assert_eq!(len_of(&grown, guid(1)), 100 * MIB + capacity);
+        assert_eq!(validate(&layout, &grown), Ok(()));
     }
 
     #[derive(Clone, Copy, Debug)]
