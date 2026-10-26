@@ -60,6 +60,7 @@ A target file maps each partition's PARTUUID to its new start and length in sect
 ```
 cargo build --release --target x86_64-unknown-linux-musl   # the static bootshift binary
 cargo test --workspace
+cargo run -p bootshift-gui -- --demo                       # the desktop app, on a made-up demo disk
 cd gui && npm ci && npm test && npm run build              # the web frontend
 ```
 
@@ -74,7 +75,8 @@ cd gui && npm ci && npm test && npm run build              # the web frontend
 | `crates/engine` | Preflight checks, copier, executor, recovery, prepare step |
 | `crates/cli` | The `bootshift` binary, used in the normal system and as the recovery system's init |
 | `crates/helper` | `bootshiftd`, the polkit-checked D-Bus service the GUI talks to |
-| `gui/` | The desktop app's frontend |
+| `crates/gui` | `bootshift-gui`, the desktop app. Talks only to `bootshiftd`; shows a demo disk when the helper isn't running |
+| `gui/` | The TypeScript reference frontend the desktop app was built from |
 | `packaging/` | D-Bus, systemd and polkit files |
 
 ## Contributing
