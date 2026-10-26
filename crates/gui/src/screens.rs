@@ -6,6 +6,9 @@ use eframe::egui::{
     Vec2, WidgetInfo, text::LayoutJob,
 };
 
+use bootshift_core::layout::{Content, Guid, Partition};
+use bootshift_core::units::{Sectors, format_bytes};
+
 use crate::app::{Action, App, Goal, RowState, Screen};
 use crate::disk_bar::DiskBar;
 use crate::grid::{self, Column};
@@ -55,6 +58,12 @@ fn lede_text(ui: &mut Ui, lede: &str) {
 /* ---------- arrange ---------- */
 
 fn arrange(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
+    // A simplified goal screen for every goal but the editor.
+    if let Some(goal) = app.goal {
+        if goal != Goal::DoItMyself {
+            return goal_screen(ui, app, goal, actions, narrow);
+        }
+    }
     header(
         ui,
         "Arrange the disk",
@@ -510,6 +519,264 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
     if response.clicked() && enabled {
         actions.push(Action::ChooseGoal(goal));
     }
+}
+
+/* ---------- goal screens ---------- */
+
+const GIB_SECTORS: u64 = 2 * 1024 * 1024;
+
+fn goal_heading(goal: Goal) -> (&'static str, &'static str) {
+    match goal {
+        Goal::InstallOs => (
+            "Install an operating system",
+            "Choose where to take the space from and how much, and BootShift frees a clean block.",
+        ),
+        Goal::GiveSpace => (
+            "Give a partition more space",
+            "Pick the one that's full and how much bigger it should be.",
+        ),
+        Goal::FreeSpace => (
+            "Free up space from a partition",
+            "Pick a roomy partition and how much to carve off as free space.",
+        ),
+        Goal::MovePartition => (
+            "Move a partition",
+            "Pick one and where it should go. Its contents go nowhere, only its place.",
+        ),
+        Goal::CleanUp => ("Clean up a drive", "Remove a partition you no longer need."),
+        Goal::DoItMyself => ("Arrange the disk", ""),
+    }
+}
+
+/// Whether a goal can act on a partition of this content.
+fn goal_applies(goal: Goal, content: Content) -> bool {
+    match goal {
+        Goal::GiveSpace => content.can_grow(),
+        Goal::FreeSpace | Goal::InstallOs => content.can_shrink(),
+        Goal::MovePartition => content.can_move(),
+        Goal::CleanUp | Goal::DoItMyself => false,
+    }
+}
+
+fn goal_screen(ui: &mut Ui, app: &App, goal: Goal, actions: &mut Vec<Action>, narrow: bool) {
+    let (title, lede) = goal_heading(goal);
+    header(ui, title, lede, narrow);
+    if !app.disk_problems.is_empty() {
+        widgets::refusals(ui, &app.disk_problems);
+        return;
+    }
+    let Some(probed) = &app.probed else {
+        return;
+    };
+    let layout = &probed.layout;
+
+    if goal == Goal::CleanUp {
+        let width = ui.available_width().min(layout::LEDE_MAX);
+        widgets::paragraph(
+            ui,
+            "Removing a partition isn't available in this build yet. For now, open \"Do it myself\" \
+             from Home to edit the disk directly, or pick another goal.",
+            size::LEDE,
+            theme::DIM,
+            width,
+            1.5,
+        );
+        return;
+    }
+
+    let any = layout.partitions.iter().any(|p| goal_applies(goal, p.content));
+    if !any {
+        let width = ui.available_width().min(layout::LEDE_MAX);
+        widgets::paragraph(
+            ui,
+            "No partition on this disk can do that yet. Shrinking ext4 and NTFS needs a feature \
+             that isn't shipped; Btrfs and swap can shrink today.",
+            size::LEDE,
+            theme::DIM,
+            width,
+            1.5,
+        );
+        return;
+    }
+
+    widgets::panel(ui, Margin::symmetric(19, 17), |ui| {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        bar_caption(ui, picker_caption(goal), "pick one");
+        for partition in &layout.partitions {
+            partition_row(ui, app, goal, partition, actions);
+        }
+    });
+    ui.add_space(14.0);
+
+    if let Some(guid) = app.goal_partition {
+        widgets::panel(ui, Margin::symmetric(19, 17), |ui| {
+            ui.spacing_mut().item_spacing = Vec2::ZERO;
+            if goal == Goal::MovePartition {
+                bar_caption(ui, "Where should it go?", "");
+                ui.add_space(10.0);
+                move_pills(ui, app, actions);
+            } else {
+                bar_caption(ui, amount_caption(goal), "how much");
+                ui.add_space(10.0);
+                amount_pills(ui, app, probed, goal, guid, actions);
+            }
+        });
+        ui.add_space(14.0);
+
+        widgets::panel(ui, Margin::symmetric(19, 17), |ui| {
+            ui.spacing_mut().item_spacing = Vec2::ZERO;
+            bar_caption(ui, "After the restart", "what will change");
+            DiskBar {
+                id: "goal-after",
+                layout,
+                target: &app.target,
+                selected: app.goal_partition,
+                editable: false,
+            }
+            .show(ui);
+        });
+    }
+}
+
+fn picker_caption(goal: Goal) -> &'static str {
+    match goal {
+        Goal::GiveSpace => "Which partition needs more room?",
+        Goal::FreeSpace => "Which partition has room to spare?",
+        Goal::InstallOs => "Which partition should give up the space?",
+        Goal::MovePartition => "Which partition do you want to move?",
+        _ => "Pick a partition",
+    }
+}
+
+fn amount_caption(goal: Goal) -> &'static str {
+    match goal {
+        Goal::GiveSpace => "How much bigger?",
+        Goal::FreeSpace => "How much to free up?",
+        Goal::InstallOs => "How much room for the new OS?",
+        _ => "How much?",
+    }
+}
+
+fn partition_row(ui: &mut Ui, app: &App, goal: Goal, partition: &Partition, actions: &mut Vec<Action>) {
+    let applies = goal_applies(goal, partition.content);
+    let selected = app.goal_partition == Some(partition.unique_guid);
+    let sector = app.probed.as_ref().map_or(512, |p| p.layout.geometry.sector_size);
+    let width = ui.available_width();
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 54.0), Sense::click());
+    let hovered = response.hovered() && applies;
+
+    let name = widgets::galley(
+        ui,
+        partition.label(),
+        Face::Sans(Weight::SemiBold),
+        14.0,
+        if applies { theme::INK } else { theme::FAINT },
+    );
+    let right_text = if !applies {
+        "can't change this".to_string()
+    } else if partition.used.0 > 0 {
+        format!(
+            "{} used of {}",
+            bootshift_core::units::format_bytes(partition.used.to_bytes(sector)),
+            bootshift_core::units::format_bytes(partition.extent.len.to_bytes(sector)),
+        )
+    } else {
+        format!("{} empty", bootshift_core::units::format_bytes(partition.extent.len.to_bytes(sector)))
+    };
+    let right = widgets::galley(ui, right_text, Face::Mono(Weight::Regular), 11.5, theme::DIM);
+
+    let painter = ui.painter();
+    let radius = CornerRadius::same(8);
+    painter.rect_filled(rect, radius, if selected { theme::mix(theme::SIGNAL, 0.07, theme::DECK_HIGH) } else { theme::DECK_HIGH });
+    let border = if selected {
+        theme::SIGNAL
+    } else if hovered {
+        theme::RULE_HOVER
+    } else {
+        theme::RULE
+    };
+    painter.rect_stroke(rect, radius, Stroke::new(1.0, border), StrokeKind::Inside);
+
+    let sw = Rect::from_min_size(rect.left_top() + Vec2::new(14.0, 21.0), Vec2::splat(12.0));
+    painter.rect_filled(sw, CornerRadius::same(3), theme::content_colour(partition.content));
+    widgets::text_at(painter, Align2::LEFT_CENTER, Pos2::new(sw.right() + 13.0, rect.center().y), name);
+    widgets::text_at(painter, Align2::RIGHT_CENTER, Pos2::new(rect.right() - 16.0, rect.center().y), right);
+
+    if applies {
+        if hovered {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, true, partition.label()));
+        if response.clicked() {
+            actions.push(Action::GoalPick(partition.unique_guid));
+        }
+    }
+    ui.add_space(8.0);
+}
+
+fn amount_pills(ui: &mut Ui, app: &App, probed: &crate::protocol::Probed, goal: Goal, guid: Guid, actions: &mut Vec<Action>) {
+    let layout = &probed.layout;
+    let sector = layout.geometry.sector_size;
+    let base = &probed.target;
+    // The most the goal can change this partition by, found by asking the editor to go as far
+    // as it can on the untouched layout.
+    let Some(cur) = layout.partition(guid).map(|p| p.extent) else {
+        return;
+    };
+    let far = match goal {
+        Goal::GiveSpace => crate::editing::set_end(layout, base, guid, cur.end().0 as f64 + 1e18),
+        _ => crate::editing::set_end(layout, base, guid, cur.start.0 as f64),
+    };
+    let max = far.map_or(0, |ext| cur.len.0.abs_diff(ext.len.0));
+    if max == 0 {
+        let galley = widgets::galley(
+            ui,
+            "There's no adjacent space to do this here.",
+            Face::Sans(Weight::Regular),
+            13.0,
+            theme::DIM,
+        );
+        widgets::show_galley(ui, galley);
+        return;
+    }
+
+    // A few GiB-rounded presets up to the maximum, plus the maximum itself.
+    let mut amounts: Vec<u64> = Vec::new();
+    for fraction in [0.25, 0.5, 0.75] {
+        let rounded = ((max as f64 * fraction) as u64 / GIB_SECTORS) * GIB_SECTORS;
+        let amount = rounded.clamp(GIB_SECTORS.min(max), max);
+        if amount > 0 && !amounts.contains(&amount) && amount < max {
+            amounts.push(amount);
+        }
+    }
+    amounts.push(max);
+
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+        for (index, &amount) in amounts.iter().enumerate() {
+            let is_max = index == amounts.len() - 1;
+            let size = format_bytes(amount * sector as u64);
+            let label = if is_max { format!("Max · {size}") } else { size };
+            let on = app.goal_amount.0.abs_diff(amount) < GIB_SECTORS / 2;
+            let kind = if on { Kind::Primary } else { Kind::Secondary };
+            if widgets::button(ui, &label, kind, true).clicked() {
+                actions.push(Action::GoalAmount(Sectors(amount)));
+            }
+        }
+    });
+}
+
+fn move_pills(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+        let left_on = app.goal_move_left;
+        if widgets::button(ui, "Toward the start", if left_on { Kind::Primary } else { Kind::Secondary }, true).clicked() {
+            actions.push(Action::GoalMove(true));
+        }
+        if widgets::button(ui, "Toward the end", if left_on { Kind::Secondary } else { Kind::Primary }, true).clicked() {
+            actions.push(Action::GoalMove(false));
+        }
+    });
 }
 
 /* ---------- restart ---------- */

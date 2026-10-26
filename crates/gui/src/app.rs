@@ -3,11 +3,13 @@
 
 use std::time::Duration;
 
-use bootshift_core::layout::{Extent, Guid, Target};
+use bootshift_core::layout::{Extent, Guid, Layout, Target};
 use bootshift_core::refusal::Refusal;
+use bootshift_core::units::Sectors;
 use eframe::egui;
 
 use crate::backend::{BackendError, Request, Response, Worker};
+use crate::editing;
 use crate::protocol::{CheckResult, DiskSummary, Planned, Probed, Reply};
 use crate::recovery_run::{Phase, RecoveryRun};
 use crate::save::SaveDialog;
@@ -89,9 +91,33 @@ impl Goal {
     }
 }
 
+/// A sensible partition to start a goal on: the largest one the goal can act on.
+fn default_goal_partition(layout: &Layout, goal: Goal) -> Option<Guid> {
+    let largest = |capable: fn(&bootshift_core::layout::Partition) -> bool| {
+        layout
+            .partitions
+            .iter()
+            .filter(|p| capable(p))
+            .max_by_key(|p| p.extent.len.0)
+            .map(|p| p.unique_guid)
+    };
+    match goal {
+        Goal::GiveSpace => largest(|p| p.content.can_grow()),
+        Goal::FreeSpace | Goal::InstallOs => largest(|p| p.content.can_shrink()),
+        Goal::MovePartition => largest(|p| p.content.can_move()),
+        Goal::CleanUp | Goal::DoItMyself => None,
+    }
+}
+
 pub enum Action {
     ChooseDisk(String),
     ChooseGoal(Goal),
+    /// On a goal screen: act on this partition.
+    GoalPick(Guid),
+    /// On a grow/shrink/free goal: change by this many sectors.
+    GoalAmount(Sectors),
+    /// On the move goal: toward the start of the disk (true) or the end (false).
+    GoalMove(bool),
     Show(Screen),
     Pick(Guid),
     Edit(Guid, Extent),
@@ -144,9 +170,14 @@ pub struct App {
     pending_apply: Option<u64>,
     pub screen: Screen,
     pub reached: Screen,
-    /// The goal chosen on the home screen, if any. Future goal screens read it; today every
-    /// goal opens the editor.
+    /// The goal chosen on the home screen, if any.
     pub goal: Option<Goal>,
+    /// The partition a simplified goal screen acts on.
+    pub goal_partition: Option<Guid>,
+    /// How much a grow/shrink/free goal changes the partition by.
+    pub goal_amount: Sectors,
+    /// For the move goal: toward the start of the disk when true, the end when false.
+    pub goal_move_left: bool,
     pub screen_shown_at: f64,
     pub status: String,
     pub run: Option<RecoveryRun>,
@@ -181,6 +212,9 @@ impl App {
             screen: Screen::Home,
             reached: Screen::Arrange,
             goal: None,
+            goal_partition: None,
+            goal_amount: Sectors(0),
+            goal_move_left: true,
             screen_shown_at: 0.0,
             status: String::new(),
             run: None,
@@ -322,20 +356,66 @@ impl App {
         self.status.clear();
     }
 
-    /// Opens a goal. Today every goal leads to the editor (the "do it myself" experience); the
-    /// simplified per-goal screens are built out one at a time, and will set a target here
-    /// before showing the editor as a confirmation.
+    /// Opens a goal. `DoItMyself` is the editor; the others are simplified screens that build a
+    /// target from one partition and an amount, and leave `Clean up` as advice for now.
     fn choose_goal(&mut self, goal: Goal) {
-        if self.probed.is_none() {
+        let Some(probed) = self.probed.clone() else {
             return;
-        }
+        };
         self.goal = Some(goal);
+        self.goal_move_left = true;
+        self.goal_partition = default_goal_partition(&probed.layout, goal);
+        self.goal_amount = Sectors(0);
+        self.target = probed.target.clone();
+        self.selected = self.goal_partition;
+        if goal != Goal::DoItMyself {
+            self.recompute_goal_target();
+        }
         self.show(Screen::Arrange);
         self.status = match goal {
             Goal::DoItMyself => "Drag a partition to move it, or an edge to resize it.",
-            _ => "Arrange the change, then see the plan. A simpler screen for this is coming.",
+            Goal::CleanUp => "Choose what you no longer need.",
+            _ => "Pick the partition and how much, then see the plan.",
         }
         .to_string();
+    }
+
+    /// Rebuilds the target from scratch for the current goal: the disk as it is, plus the one
+    /// change the goal makes. The engine's checks still have the final say on the plan screen.
+    fn recompute_goal_target(&mut self) {
+        let Some(probed) = self.probed.clone() else {
+            return;
+        };
+        let layout = &probed.layout;
+        let mut target = probed.target.clone();
+        if let (Some(goal), Some(guid)) = (self.goal, self.goal_partition) {
+            if let Some(extent) = self.goal_extent(layout, &target, goal, guid) {
+                target.insert(guid, extent);
+            }
+        }
+        self.on_target_change(target);
+    }
+
+    /// The new extent of the goal's partition, or `None` to leave it unchanged.
+    fn goal_extent(&self, layout: &Layout, target: &Target, goal: Goal, guid: Guid) -> Option<Extent> {
+        let current = *target.get(&guid)?;
+        let amount = self.goal_amount.0 as f64;
+        match goal {
+            Goal::GiveSpace => editing::set_end(layout, target, guid, current.end().0 as f64 + amount),
+            Goal::FreeSpace | Goal::InstallOs => {
+                editing::set_end(layout, target, guid, current.end().0 as f64 - amount)
+            }
+            Goal::MovePartition => {
+                let (left, right) = editing::neighbour_bounds(layout, target, guid);
+                let dest = if self.goal_move_left {
+                    left as f64
+                } else {
+                    right.saturating_sub(current.len.0) as f64
+                };
+                editing::move_to(layout, target, guid, dest)
+            }
+            Goal::CleanUp | Goal::DoItMyself => None,
+        }
     }
 
     fn pick(&mut self, guid: Guid) {
@@ -533,6 +613,18 @@ impl App {
         match action {
             Action::ChooseDisk(disk) => self.open_disk(disk),
             Action::ChooseGoal(goal) => self.choose_goal(goal),
+            Action::GoalPick(guid) => {
+                self.goal_partition = Some(guid);
+                self.recompute_goal_target();
+            }
+            Action::GoalAmount(amount) => {
+                self.goal_amount = amount;
+                self.recompute_goal_target();
+            }
+            Action::GoalMove(left) => {
+                self.goal_move_left = left;
+                self.recompute_goal_target();
+            }
             Action::Show(screen) => self.show(screen),
             Action::Pick(guid) => self.pick(guid),
             Action::Edit(guid, extent) => {

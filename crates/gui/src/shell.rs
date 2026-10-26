@@ -468,13 +468,18 @@ fn buttons(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
                 app.has_changes(),
                 Action::Show(Screen::Plan),
             );
-            push(
-                ui,
-                "Start over",
-                Kind::Secondary,
-                app.has_changes(),
-                Action::StartOver,
-            );
+            // On a goal screen, the way back is to the goals; in the editor, it's Start over.
+            if app.goal.is_some_and(|g| g != crate::app::Goal::DoItMyself) {
+                push(ui, "Back to goals", Kind::Secondary, true, Action::Show(Screen::Home));
+            } else {
+                push(
+                    ui,
+                    "Start over",
+                    Kind::Secondary,
+                    app.has_changes(),
+                    Action::StartOver,
+                );
+            }
         }
         Screen::Plan => {
             push(

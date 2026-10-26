@@ -136,6 +136,7 @@ fn home_screen_lists_the_goals() {
     harness.run_steps(4);
     assert_eq!(harness.state().screen, Screen::Arrange);
     assert_eq!(harness.state().goal, Some(crate::app::Goal::InstallOs));
+    snapshot(&mut harness, "01-goal-install");
 }
 
 #[test]
