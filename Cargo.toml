@@ -20,6 +20,7 @@ tempfile = "3"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_with = { version = "3", default-features = false, features = ["macros"] }
 proptest = "1.5"
 
 bootshift-core = { path = "crates/core" }

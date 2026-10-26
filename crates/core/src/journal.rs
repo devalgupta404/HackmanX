@@ -7,21 +7,38 @@
 //! | 0 | progress slot A |
 //! | 1 MiB | progress slot B |
 //! | 2 MiB | plan record, written once before the restart |
+//! | 3 MiB | scope record: the used ranges of the move in progress |
 //!
 //! Progress is committed to the two slots in turn, so a write torn by a power cut can only
 //! damage the slot being written, never the newest complete one.
+//!
+//! A move's used ranges must be measured before its first chunk is copied, since afterwards
+//! the source is partly overwritten. They are written to the scope record and flushed before
+//! the slot that starts the copy is committed.
+
+use std::ops::Range;
+
+use crate::scope::CopyScope;
 
 pub const SLOT_SIZE: usize = 4096;
 pub const SLOT_OFFSETS: [u64; 2] = [0, 1 << 20];
 pub const PLAN_OFFSET: u64 = 2 << 20;
+pub const SCOPE_OFFSET: u64 = 3 << 20;
 pub const FILE_LEN: u64 = 4 << 20;
-pub const MAX_PLAN_PAYLOAD: u64 = 1 << 20;
 pub const FORMAT_VERSION: u32 = 1;
 
 const SLOT_MAGIC: [u8; 8] = *b"BSHFSLOT";
 const PLAN_MAGIC: [u8; 8] = *b"BSHFPLAN";
+const SCOPE_MAGIC: [u8; 8] = *b"BSHFSCOP";
 const PLAN_HEADER_LEN: usize = 8 + 4 + 8 + 8;
+const SCOPE_HEADER_LEN: usize = 8 + 4 + 8 + 4 + 1 + 4;
 const CHECKSUM_LEN: usize = 4;
+const RANGE_LEN: usize = 16;
+const REGION_LEN: u64 = 1 << 20;
+
+pub const MAX_PLAN_PAYLOAD: u64 = REGION_LEN - (PLAN_HEADER_LEN + CHECKSUM_LEN) as u64;
+pub const MAX_SCOPE_RANGES: usize =
+    (REGION_LEN as usize - SCOPE_HEADER_LEN - CHECKSUM_LEN) / RANGE_LEN;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stage {
@@ -71,6 +88,14 @@ pub struct PlanRecord {
     pub payload: Vec<u8>,
 }
 
+/// The used ranges of one move, measured before its first chunk was copied.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScopeRecord {
+    pub run_id: u64,
+    pub operation: u32,
+    pub scope: CopyScope,
+}
+
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {
     #[error("not a BootShift journal record")]
@@ -85,6 +110,10 @@ pub enum DecodeError {
     UnknownStage(u8),
     #[error("journal plan of {0} bytes is larger than allowed")]
     PlanTooLarge(u64),
+    #[error("journal scope holds {0} ranges, more than allowed")]
+    TooManyRanges(u64),
+    #[error("journal scope ranges are empty, unsorted or overlapping")]
+    BadRanges,
 }
 
 impl Slot {
@@ -168,6 +197,65 @@ impl PlanRecord {
             .to_vec();
         reader.expect_checksum()?;
         Ok(PlanRecord { run_id, payload })
+    }
+}
+
+impl ScopeRecord {
+    /// Encodes the record. A scope with more than [`MAX_SCOPE_RANGES`] ranges must be
+    /// coalesced first.
+    pub fn encode(&self) -> Vec<u8> {
+        let (everything, ranges): (u8, &[Range<u64>]) = match &self.scope {
+            CopyScope::Everything => (1, &[]),
+            CopyScope::UsedOnly(ranges) => (0, ranges),
+        };
+        let mut out =
+            Vec::with_capacity(SCOPE_HEADER_LEN + ranges.len() * RANGE_LEN + CHECKSUM_LEN);
+        out.extend(SCOPE_MAGIC);
+        out.extend(FORMAT_VERSION.to_le_bytes());
+        out.extend(self.run_id.to_le_bytes());
+        out.extend(self.operation.to_le_bytes());
+        out.push(everything);
+        out.extend((ranges.len() as u32).to_le_bytes());
+        for range in ranges {
+            out.extend(range.start.to_le_bytes());
+            out.extend(range.end.to_le_bytes());
+        }
+        out.extend(crc32c::crc32c(&out).to_le_bytes());
+        out
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<ScopeRecord, DecodeError> {
+        let mut reader = Reader::new(bytes);
+        reader.expect_magic(SCOPE_MAGIC)?;
+        reader.expect_version()?;
+        let run_id = reader.u64()?;
+        let operation = reader.u32()?;
+        let everything = reader.u8()? == 1;
+        let count = u64::from(reader.u32()?);
+        if count > MAX_SCOPE_RANGES as u64 {
+            return Err(DecodeError::TooManyRanges(count));
+        }
+        let mut ranges = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            ranges.push(reader.u64()?..reader.u64()?);
+        }
+        reader.expect_checksum()?;
+
+        let sorted_and_disjoint = ranges.iter().all(|r| r.start < r.end)
+            && ranges.windows(2).all(|pair| pair[0].end <= pair[1].start);
+        if !sorted_and_disjoint {
+            return Err(DecodeError::BadRanges);
+        }
+        let scope = if everything {
+            CopyScope::Everything
+        } else {
+            CopyScope::UsedOnly(ranges)
+        };
+        Ok(ScopeRecord {
+            run_id,
+            operation,
+            scope,
+        })
     }
 }
 
@@ -358,6 +446,60 @@ mod tests {
             PlanRecord::decode_header(&encoded),
             Err(DecodeError::PlanTooLarge(u64::MAX))
         );
+    }
+
+    fn scope_record() -> ScopeRecord {
+        ScopeRecord {
+            run_id: 0xDEAD_BEEF,
+            operation: 2,
+            scope: CopyScope::UsedOnly(vec![0..4096, 1 << 20..3 << 20]),
+        }
+    }
+
+    #[test]
+    fn scope_record_round_trips() {
+        assert_eq!(
+            ScopeRecord::decode(&scope_record().encode()),
+            Ok(scope_record())
+        );
+        let everything = ScopeRecord {
+            scope: CopyScope::Everything,
+            ..scope_record()
+        };
+        assert_eq!(ScopeRecord::decode(&everything.encode()), Ok(everything));
+    }
+
+    #[test]
+    fn every_single_bit_flip_in_a_scope_record_is_detected() {
+        let encoded = scope_record().encode();
+        for bit in 0..encoded.len() * 8 {
+            let mut damaged = encoded.clone();
+            damaged[bit / 8] ^= 1 << (bit % 8);
+            assert!(
+                ScopeRecord::decode(&damaged).is_err(),
+                "bit {bit} flip went unnoticed"
+            );
+        }
+    }
+
+    #[test]
+    fn overlapping_scope_ranges_are_refused() {
+        let record = ScopeRecord {
+            scope: CopyScope::UsedOnly(vec![0..100, 50..200]),
+            ..scope_record()
+        };
+        assert_eq!(
+            ScopeRecord::decode(&record.encode()),
+            Err(DecodeError::BadRanges)
+        );
+    }
+
+    #[test]
+    fn the_largest_records_stay_inside_their_regions() {
+        let biggest_plan = PLAN_HEADER_LEN as u64 + MAX_PLAN_PAYLOAD + CHECKSUM_LEN as u64;
+        assert!(PLAN_OFFSET + biggest_plan <= SCOPE_OFFSET);
+        let biggest_scope = SCOPE_HEADER_LEN + MAX_SCOPE_RANGES * RANGE_LEN + CHECKSUM_LEN;
+        assert!(SCOPE_OFFSET + biggest_scope as u64 <= FILE_LEN);
     }
 
     #[test]

@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use crate::layout::{Guid, Layout, Partition};
 use crate::units::{Lba, Sectors};
 
 /// One step of a plan. Each operation ends with the partition table describing its result.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Operation {
     /// Shrink the filesystem, then the partition, keeping its start.
     Shrink { partition: Guid, len: Sectors },
@@ -22,7 +24,7 @@ pub enum Operation {
     RecreateSwap { partition: Partition },
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plan {
     pub operations: Vec<Operation>,
 }

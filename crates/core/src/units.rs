@@ -1,12 +1,20 @@
 use std::iter::Sum;
 use std::ops::{Add, AddAssign};
 
+use serde::{Deserialize, Serialize};
+
 /// A position on the disk, in logical sectors from the start.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[serde(transparent)]
 pub struct Lba(pub u64);
 
 /// A length on the disk, in logical sectors.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[serde(transparent)]
 pub struct Sectors(pub u64);
 
 impl Lba {
