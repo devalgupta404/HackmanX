@@ -1,80 +1,167 @@
-:root {
-  color-scheme: light dark;
-  --background: #fafaf9;
-  --surface: #ffffff;
-  --text: #1c1917;
-  --muted: #57534e;
-  --border: #d6d3d1;
-  --accent: #2563eb;
-  --danger: #b91c1c;
-  --ntfs: #3b82f6;
-  --ext4: #16a34a;
-  --btrfs: #0891b2;
-  --xfs: #7c3aed;
-  --swap: #a16207;
-  --system: #78716c;
-  --unknown: #a8a29e;
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
-}
+/* BootShift's one committed look: midnight ground, mint accent, partitions colour-coded.
+   The app deals in a user's whole disk, so it dresses like an instrument, not a toy. */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #1c1917;
-    --surface: #292524;
-    --text: #f5f5f4;
-    --muted: #a8a29e;
-    --border: #44403c;
-    --accent: #60a5fa;
-    --danger: #f87171;
-  }
+:root {
+  color-scheme: dark;
+  --bg: #101512;
+  --panel: #151b17;
+  --chrome: #1a201c;
+  --ink: #e2eae4;
+  --muted: #8ca094;
+  --faint: #5c6a61;
+  --hair: #28322b;
+  --hair-soft: #202a23;
+  --mint: #5be3a9;
+  --mint-dim: #2e9c72;
+  --mint-ink: #0a120d;
+  --danger: #e07a6b;
+  --warn: #d2a75f;
+  --ok: #6fd6a0;
+  --ntfs: #5f87b8;
+  --ext4: #3dbd8b;
+  --btrfs: #4aa3a8;
+  --xfs: #8d85c9;
+  --swap: #c29b59;
+  --system: #4a554e;
+  --unknown: #5c6a61;
+  font-family: "Ubuntu", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
 }
 
 body {
   margin: 0;
-  background: var(--background);
-  color: var(--text);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+::selection {
+  background: rgb(91 227 169 / 0.25);
 }
 
 header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  gap: 1.5rem;
+  padding: 0.7rem 1.5rem;
+  border-bottom: 1px solid var(--hair);
+  background: var(--chrome);
 }
 
-h1 {
+.brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+}
+
+.brand em {
+  font-style: normal;
+  color: var(--mint);
+}
+
+#stepper {
+  display: flex;
+  gap: 0.25rem;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.step {
   margin: 0;
-  font-size: 1.25rem;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: default;
 }
 
-h2 {
-  font-size: 1rem;
-  margin: 1.5rem 0 0.5rem;
+.step.reachable {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.step.reachable:hover {
+  border-color: var(--hair);
+}
+
+.step.current {
+  color: var(--mint);
+  border-color: var(--mint-dim);
+  background: rgb(91 227 169 / 0.08);
+}
+
+.disk-pick {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.disk-pick select {
+  margin-left: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
 }
 
 main {
-  max-width: 64rem;
+  max-width: 62rem;
   margin: 0 auto;
-  padding: 0 1.5rem 2rem;
+  padding: 0 1.5rem 3rem;
 }
 
 .notice {
   margin-top: 1rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
+  padding: 0.5rem 0.9rem;
+  border: 1px solid rgb(210 167 95 / 0.4);
+  border-radius: 7px;
+  color: var(--warn);
+  background: rgb(210 167 95 / 0.07);
+  font-size: 0.9rem;
 }
+
+.screen {
+  margin-top: 1.5rem;
+  padding: 1.4rem 1.6rem 1.6rem;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: linear-gradient(var(--panel), var(--bg));
+}
+
+h2 {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+}
+
+.barcap {
+  margin: 1rem 0 0.4rem;
+  font-family: "Ubuntu Mono", monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.hint {
+  margin: 1rem 0 0;
+  color: var(--faint);
+  font-size: 0.85rem;
+}
+
+/* ---------- the disk bar ---------- */
 
 .disk-bar {
   position: relative;
   height: 4.5rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: repeating-linear-gradient(45deg, transparent 0 6px, var(--border) 6px 7px);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: repeating-linear-gradient(135deg, #0a0e0c 0 5px, #131815 5px 10px);
   overflow: hidden;
 }
 
@@ -85,11 +172,11 @@ main {
   bottom: 0;
   min-width: 6px;
   box-sizing: border-box;
-  padding: 0.35rem 0.5rem;
-  border-right: 2px solid var(--background);
+  padding: 0.4rem 0.6rem;
+  border-right: 1px solid #0b0f0c;
   background: var(--unknown);
-  color: #fff;
-  font-size: 0.8rem;
+  color: #f2f7f3;
+  font-size: 0.78rem;
   overflow: hidden;
   white-space: nowrap;
   cursor: grab;
@@ -103,33 +190,42 @@ main {
 }
 
 .partition:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: -3px;
+  outline: 2px solid var(--mint);
+  outline-offset: -2px;
 }
 
 .partition.locked {
   cursor: not-allowed;
-  background-image: repeating-linear-gradient(135deg, transparent 0 8px, rgb(0 0 0 / 0.15) 8px 10px);
+  background-image: repeating-linear-gradient(135deg, transparent 0 8px, rgb(0 0 0 / 0.25) 8px 10px);
 }
 
+/* Solid colour with a fine block texture is data; the dark tint behind it is free space. */
 .partition .used {
   position: absolute;
   left: 0;
+  top: 0;
   bottom: 0;
-  height: 0.3rem;
-  background: rgb(255 255 255 / 0.6);
+  background-color: rgb(255 255 255 / 0.25);
+  background-image: repeating-linear-gradient(90deg, rgb(9 13 11 / 0.35) 0 1px, transparent 1px 7px);
 }
 
 .partition .name,
 .partition .size {
   position: relative;
+  z-index: 2;
   display: block;
   text-overflow: ellipsis;
   overflow: hidden;
+  text-shadow: 0 1px 3px rgb(4 7 5 / 0.55);
+}
+
+.partition .name {
+  font-weight: 700;
 }
 
 .partition .size {
   opacity: 0.85;
+  font-size: 0.72rem;
 }
 
 .handle {
@@ -138,6 +234,7 @@ main {
   bottom: 0;
   width: 0.6rem;
   cursor: ew-resize;
+  z-index: 3;
 }
 
 .handle.start {
@@ -149,77 +246,430 @@ main {
 }
 
 .handle:hover {
-  background: rgb(255 255 255 / 0.35);
+  background: rgb(91 227 169 / 0.35);
 }
 
 .content-ntfs {
+  background-color: color-mix(in srgb, var(--ntfs) 30%, var(--bg));
+}
+.content-ntfs .used {
   background-color: var(--ntfs);
 }
 .content-ext4 {
+  background-color: color-mix(in srgb, var(--ext4) 26%, var(--bg));
+}
+.content-ext4 .used {
   background-color: var(--ext4);
 }
 .content-btrfs {
+  background-color: color-mix(in srgb, var(--btrfs) 26%, var(--bg));
+}
+.content-btrfs .used {
   background-color: var(--btrfs);
 }
 .content-xfs {
+  background-color: color-mix(in srgb, var(--xfs) 26%, var(--bg));
+}
+.content-xfs .used {
   background-color: var(--xfs);
 }
 .content-swap {
+  background-color: color-mix(in srgb, var(--swap) 30%, var(--bg));
+}
+.content-swap .used {
   background-color: var(--swap);
 }
 .content-efisystem,
 .content-bitlocker {
   background-color: var(--system);
 }
+.content-opaque {
+  background-color: color-mix(in srgb, var(--unknown) 45%, var(--bg));
+}
+.content-opaque .used {
+  background-color: var(--unknown);
+}
+
+/* ---------- legend ---------- */
+
+.legend {
+  margin-top: 1rem;
+  border-top: 1px solid var(--hair-soft);
+}
+
+.legend-row {
+  display: grid;
+  grid-template-columns: 14px 1.6fr 1fr 1fr 1.2fr;
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.45rem 0.2rem;
+  border-bottom: 1px solid var(--hair-soft);
+  font-size: 0.82rem;
+}
+
+.legend-row .sw {
+  width: 12px;
+  height: 12px;
+  border-radius: 3.5px;
+}
+
+/* Legend swatches show the solid data colour, not the free-space tint. */
+.legend-row .sw.content-ntfs {
+  background: var(--ntfs);
+}
+.legend-row .sw.content-ext4 {
+  background: var(--ext4);
+}
+.legend-row .sw.content-btrfs {
+  background: var(--btrfs);
+}
+.legend-row .sw.content-xfs {
+  background: var(--xfs);
+}
+.legend-row .sw.content-swap {
+  background: var(--swap);
+}
+.legend-row .sw.content-opaque {
+  background: var(--unknown);
+}
+
+.legend-row .l-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legend-row .l-dim {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- buttons ---------- */
 
 button {
-  margin-top: 0.75rem;
-  padding: 0.45rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
+  padding: 0.5rem 1.2rem;
+  border: 1px solid #39453e;
+  border-radius: 7px;
+  background: #1c2420;
+  color: var(--ink);
   font: inherit;
+  font-size: 0.9rem;
   cursor: pointer;
 }
 
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: default;
 }
 
 button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
+  border-color: var(--mint);
+  background: var(--mint);
+  color: var(--mint-ink);
+  font-weight: 700;
 }
 
-.go {
+button.primary:not(:disabled) {
+  box-shadow: 0 0 20px rgb(91 227 169 / 0.25);
+}
+
+button.danger {
+  border-color: rgb(224 122 107 / 0.5);
+  background: transparent;
+  color: var(--danger);
+  font-family: "Ubuntu Mono", monospace;
+  font-size: 0.85rem;
+}
+
+button.danger:hover {
+  background: rgb(224 122 107 / 0.08);
+}
+
+.btnrow {
   display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  margin-top: 1.4rem;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
 }
 
-.go h2 {
-  flex-basis: 100%;
+.btnrow button:first-child:not(:only-child) {
+  margin-right: auto;
 }
 
 .confirm {
-  margin-top: 0.75rem;
+  display: block;
+  margin-top: 1.2rem;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
+
+.confirm input {
+  accent-color: var(--mint);
+  margin-right: 0.4rem;
+}
+
+/* ---------- plan screen ---------- */
+
+.plan-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--hair-soft);
+  counter-reset: plan;
+}
+
+.plan-steps li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 0.7rem;
+  align-items: baseline;
+  padding: 0.7rem 0.2rem;
+  border-bottom: 1px solid var(--hair-soft);
+  font-size: 0.92rem;
+  counter-increment: plan;
+}
+
+.plan-steps li::before {
+  content: counter(plan);
+  width: 21px;
+  height: 21px;
+  border: 1px solid var(--mint-dim);
+  border-radius: 50%;
+  color: var(--mint);
+  font-family: "Ubuntu Mono", monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 20px;
+  position: relative;
+  top: 2px;
+}
+
+.plan-steps li .fix {
+  grid-column: 2;
+}
+
+.estimate {
+  margin: 1.2rem 0 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgb(91 227 169 / 0.3);
+  border-radius: 8px;
+  background: rgb(91 227 169 / 0.07);
+  font-size: 0.92rem;
+}
+
+.estimate b {
+  color: var(--mint);
+}
+
+/* ---------- problems and checks ---------- */
 
 .problems {
-  padding-left: 1.2rem;
-  color: var(--danger);
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.problems .fix {
-  margin: 0.1rem 0 0.5rem;
+.problems li,
+.checks li {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 0.75rem;
+  padding: 0.7rem 0.2rem;
+  border-bottom: 1px solid var(--hair-soft);
+  font-size: 0.92rem;
+}
+
+.problems li::before,
+.checks li.fail::before {
+  content: "✕";
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: rgb(224 122 107 / 0.13);
+  color: var(--danger);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 19px;
+  position: relative;
+  top: 2px;
+}
+
+.checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--hair-soft);
+}
+
+.checks li.pass::before {
+  content: "✓";
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: rgb(111 214 160 / 0.12);
+  color: var(--ok);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 19px;
+  position: relative;
+  top: 2px;
+}
+
+.problems .fix,
+.checks .fix {
+  margin: 0.4rem 0 0;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--hair);
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  background: #121815;
   color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.problems .fix::before,
+.checks .fix::before {
+  content: "Fix: ";
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* ---------- the recovery console ---------- */
+
+.console {
+  margin-top: 0.5rem;
+  padding: 1.6rem 1.9rem 1.8rem;
+  border: 1px solid #1b231e;
+  border-radius: 10px;
+  background: #050706;
+  font-family: "Ubuntu Mono", monospace;
+  font-size: 0.9rem;
+  line-height: 1.8;
+  color: #aebdb2;
+  min-height: 13.5rem;
+  overflow-x: auto;
+}
+
+.console .dim {
+  color: #5c6a61;
+}
+
+.console .lit {
+  color: #edf4ee;
+  font-weight: 700;
+}
+
+.console .grn {
+  color: var(--mint);
+}
+
+.console .amb {
+  color: var(--warn);
+}
+
+.console .bar-line {
+  letter-spacing: -0.5px;
+  white-space: nowrap;
+}
+
+.console hr {
+  border: none;
+  border-top: 1px solid #161d18;
+  margin: 0.7rem 0;
+}
+
+.console-controls {
+  justify-content: center;
+}
+
+.console-controls button:first-child:not(:only-child) {
+  margin-right: 0;
+}
+
+/* ---------- done screen ---------- */
+
+.done-head {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.done-head h2 {
+  margin: 0;
+}
+
+.done-badge {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--mint-dim);
+  border-radius: 50%;
+  background: rgb(91 227 169 / 0.12);
+  color: var(--mint);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 30px;
+  flex: none;
+  box-shadow: 0 0 18px rgb(91 227 169 / 0.25);
+}
+
+.statrow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.7rem;
+  margin-top: 1.2rem;
+}
+
+.stat {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: rgb(17 23 19 / 0.5);
+}
+
+.stat .s-val {
+  font-family: "Ubuntu Mono", monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--mint);
+}
+
+.stat .s-key {
+  margin-top: 0.1rem;
+  color: var(--faint);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 720px) {
+  .statrow {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 #status {
-  margin-top: 1.5rem;
+  margin-top: 1.2rem;
   color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .screen {
+    animation: screen-in 0.25s ease;
+  }
+  @keyframes screen-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }

@@ -78,13 +78,9 @@ export function demoBackend(): Backend {
       const copied = operations.reduce((sum, op) => sum + ("Move" in op ? op.Move.copy_estimate : 0), 0);
       return { result: "ok", value: { operations, copy_bytes: copied * 512, unavailable: [] } };
     },
-    check: async () => ({
-      result: "refused",
-      refusals: [{ reason: "This is demo data, not a real disk.", fix: "Run BootShift as the desktop app to check a real disk." }],
-    }),
-    apply: async () => ({
-      result: "refused",
-      refusals: [{ reason: "This is demo data, not a real disk.", fix: "Run BootShift as the desktop app to change a real disk." }],
-    }),
+    // The pretend checks pass and apply "succeeds", so the whole flow can be walked through in
+    // a browser, restart screen included. The notice bar says it's demo data throughout.
+    check: async () => ({ result: "ok", value: null }),
+    apply: async () => ({ result: "ok", value: { restart_to_begin: true } }),
   };
 }
