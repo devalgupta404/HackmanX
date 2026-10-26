@@ -70,7 +70,7 @@ These are the results of the research pass on 2026-10-25. Each item is a correct
 15. **Secure Boot works as designed.** shim_lock verifies the kernel, not the initrd, so an unsigned initramfs is fine. Lockdown mode doesn't block block-device writes, `O_DIRECT`, BLKPG or efivars. Never ship our own shim, GRUB or kernel modules.
 16. **Refresh the kernel's partition view with BLKPG per-partition ioctls, not BLKRRPART** (it returns EBUSY while any partition is open).
 17. **Initramfs:** build our own cpio from the running system's binaries, libraries and modules. Required modules: `nvme nvme_core vmd ahci sd_mod vfat fat nls_cp437 nls_iso8859_1 efivarfs xhci_pci usbhid hid_generic i8042 atkbd` (+ `virtio_blk virtio_pci` for VMs). Modules are often `.ko.zst`, so ship `kmod`. **Refuse to plan if `/lib/modules/$(uname -r)` is missing** (kernel updated without a reboot).
-18. **ESP space:** about 25–35 MB is needed (estimated: vmlinuz 14–17 MB plus a zstd initramfs 8–15 MB). Tight on a 100 MB Windows ESP with vendor firmware files. Measure in task 0.4.
+18. **ESP space:** about 28 MiB is needed (measured: vmlinuz 16.2 MiB + initramfs 7.4 MiB + journal 4 MiB). That is tight on a 100 MiB Windows ESP carrying vendor firmware files.
 
 ### 1.5 Windows
 
@@ -158,10 +158,10 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - Done when: Windows boots, and `chkdsk` is clean.
 - [ ] **0.3** WinRE after moving the recovery partition: confirm whether it goes stale, and whether `reagentc /disable && reagentc /enable` fixes it.
   - Done when: `reagentc /info` shows Enabled at the new location.
-- [ ] **0.4** ESP budget.
-  - Build a test initramfs (kernel modules from 1.4 + e2fsprogs + ntfs-3g + btrfs-progs + xfsprogs + kmod) and measure vmlinuz + initramfs.
-  - Check ESP free space on 2–3 real laptops.
-  - Done when: the numbers are recorded in 1.4, item 18.
+- [~] **0.4** (one machine measured; 2–3 real laptops still to check) ESP budget.
+  - Measured on 2026-10-25, kernel 7.0.0-38 (Ubuntu): vmlinuz 16.2 MiB, recovery initramfs 7.4 MiB with zstd (22 MiB raw), journal 4 MiB, about 28 MiB in total.
+  - This laptop's ESP is 256 MiB with 162 MiB free.
+  - Still to check: ESP free space on 2–3 real laptops, especially Windows-made 100 MiB ESPs carrying vendor files.
 - [ ] **0.5** Boot redirect.
   - On Ubuntu and Fedora VMs with Secure Boot on, replace `EFI/<vendor>/grub.cfg` with a stub that boots a kernel + initrd from `EFI/bootshift/`.
   - On a systemd-boot VM with Secure Boot off, add a `loader/entries/bootshift.conf` entry and make it the default.
@@ -358,10 +358,14 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 10 — Boot and recovery
 
-- [ ] **10.1** `boot::initramfs`: a cpio + zstd image.
-  - The `bootshift` static binary as `/init`.
-  - The filesystem tools with their `ldd` libraries, plus `kmod`.
-  - Modules resolved by `modprobe --show-depends`.
+- [x] **10.1** `boot::initramfs` + `boot::cpio`.
+  - `CpioWriter` writes newc archives. Tested by unpacking with the system `cpio`.
+  - `build_archive` copies:
+    - the static `bootshift` binary as `/init`, and a `/dev/console` node;
+    - the required tools (refused if any is missing) and optional Btrfs/XFS tools, each with its `ldd` libraries at the same paths;
+    - module files from `modprobe --show-depends --set-version` (built-in or missing modules skipped), kmod's `modules.*` indexes, and `/etc/bootshift/modules`.
+  - `compress` uses `zstd -19`.
+  - Tested by building a real initramfs from this machine.
 - [ ] **10.2** `bootshift recover` (PID 1 mode).
   - Mount proc, sys and dev; load modules.
   - Find the journal from the kernel command line (`bootshift.journal=PARTUUID=…:extents`), then run the executor.
