@@ -172,6 +172,36 @@ fn resizing_an_edge_pushes_the_neighbour_and_hover_magnifies() {
 }
 
 #[test]
+fn cleaning_up_removes_a_partition() {
+    let mut harness = home_harness(1440.0);
+    harness.get_by_label("Clean up a drive").click();
+    harness.run_steps(4);
+    assert_eq!(harness.state().goal, Some(Goal::CleanUp));
+
+    // Click the Linux row to mark it for removal.
+    harness.get_by_label("partition 5 \"Linux\"").click();
+    harness.run_steps(4);
+    assert!(
+        harness.state().is_deleted(guid(5)),
+        "Linux is marked for removal"
+    );
+
+    seconds(&mut harness, 0.4);
+    let plan = harness
+        .state()
+        .plan
+        .clone()
+        .expect("a plan after the change");
+    assert!(
+        plan.operations
+            .iter()
+            .any(|op| matches!(op, bootshift_core::plan::Operation::Delete { .. })),
+        "the plan deletes the partition"
+    );
+    snapshot(&mut harness, "30-cleanup");
+}
+
+#[test]
 fn give_space_grows_by_shrinking_a_neighbour() {
     let mut harness = home_harness(1440.0);
     harness.get_by_label("Give a partition more space").click();

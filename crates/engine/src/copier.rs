@@ -98,10 +98,13 @@ impl ChunkCopier {
     ) -> Result<Self, CopyError> {
         let plan = ChunkPlan::new(job, block_size, options.max_chunk)?;
         let bytes_in = |range: std::ops::Range<u64>| {
-            range.map(|index| total_len(&plan.pieces(index)) as u64).sum()
+            range
+                .map(|index| total_len(&plan.pieces(index)) as u64)
+                .sum()
         };
         let done_bytes = bytes_in(0..next_chunk.min(plan.chunk_count()));
-        let total_bytes = done_bytes + bytes_in(next_chunk.min(plan.chunk_count())..plan.chunk_count());
+        let total_bytes =
+            done_bytes + bytes_in(next_chunk.min(plan.chunk_count())..plan.chunk_count());
         Ok(Self {
             plan,
             options,

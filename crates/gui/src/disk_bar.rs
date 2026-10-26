@@ -46,6 +46,13 @@ struct DragState {
     pointer_x: f32,
 }
 
+/// A choice from a partition's right-click menu, for the app to carry out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Command {
+    Delete(Guid),
+    Restore(Guid),
+}
+
 /// What the user did to the bar this frame.
 #[derive(Default)]
 pub struct Output {
@@ -53,6 +60,14 @@ pub struct Output {
     /// is one entry; resizing an edge into a neighbour pushes it, so there can be several.
     pub edits: Vec<(Guid, Extent)>,
     pub picked: Option<Guid>,
+    /// A right-click menu choice on one of the blocks.
+    pub command: Option<Command>,
+}
+
+/// Whether a partition of this content can be removed. The ESP and BitLocker volumes can't.
+pub fn deletable(content: bootshift_core::layout::Content) -> bool {
+    use bootshift_core::layout::Content;
+    !matches!(content, Content::EfiSystem | Content::BitLocker)
 }
 
 pub struct DiskBar<'a> {
@@ -130,8 +145,13 @@ impl DiskBar<'_> {
         self.layout
             .partitions
             .iter()
-            .filter(|p| is_sliver(self.layout, self.extent_of(p)))
+            .filter(|p| self.present(p) && is_sliver(self.layout, self.extent_of(p)))
             .collect()
+    }
+
+    /// A partition is present unless it is being deleted, which is to say left out of the target.
+    fn present(&self, partition: &Partition) -> bool {
+        self.target.contains_key(&partition.unique_guid)
     }
 
     fn extent_of(&self, partition: &Partition) -> Extent {
@@ -146,6 +166,7 @@ impl DiskBar<'_> {
             .layout
             .partitions
             .iter()
+            .filter(|partition| self.present(partition))
             .map(|partition| {
                 let extent = self.extent_of(partition);
                 let sliver = is_sliver(self.layout, extent);
@@ -233,6 +254,24 @@ impl DiskBar<'_> {
             });
             if body.clicked() {
                 output.picked = Some(block.guid);
+            }
+            if self.editable {
+                if let Some(partition) = self.layout.partition(block.guid) {
+                    let can_delete = deletable(partition.content);
+                    let mut chosen = None;
+                    body.context_menu(|ui| {
+                        if ui
+                            .add_enabled(can_delete, egui::Button::new("Remove this partition"))
+                            .clicked()
+                        {
+                            chosen = Some(Command::Delete(block.guid));
+                        }
+                        ui.add_enabled(false, egui::Button::new("Format as…  (coming soon)"));
+                    });
+                    if chosen.is_some() {
+                        output.command = chosen;
+                    }
+                }
             }
             let mut handles = None;
             if block.movable && !block.sliver {

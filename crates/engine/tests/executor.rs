@@ -247,6 +247,7 @@ fn the_plan_shrinks_moves_grows_and_recreates_swap() {
             bootshift_core::plan::Operation::Grow { .. } => "grow",
             bootshift_core::plan::Operation::RemoveSwap { .. } => "remove swap",
             bootshift_core::plan::Operation::RecreateSwap { .. } => "recreate swap",
+            bootshift_core::plan::Operation::Delete { .. } => "delete",
         })
         .collect();
     assert_eq!(

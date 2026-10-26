@@ -198,7 +198,7 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
                 next_operation
             }
 
-            (Operation::RemoveSwap { .. }, 0) => {
+            (Operation::RemoveSwap { .. } | Operation::Delete { .. }, 0) => {
                 self.write_table(index)?;
                 next_operation
             }
@@ -305,6 +305,7 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
             Operation::Grow { .. } => format!("Growing {name}"),
             Operation::RemoveSwap { .. } => format!("Setting aside swap {name}"),
             Operation::RecreateSwap { .. } => format!("Recreating swap {name}"),
+            Operation::Delete { .. } => format!("Removing {name}"),
         }
     }
 }

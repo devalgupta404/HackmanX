@@ -4,6 +4,7 @@
 use bootshift_core::layout::{Guid, Layout, Partition, Target};
 use eframe::egui::{self, Align2, CursorIcon, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
 
+use crate::disk_bar::{Command, deletable};
 use crate::editing::is_changed;
 use crate::format::{short_name, size};
 use crate::grid::{self, Column};
@@ -26,8 +27,18 @@ const PAD_X: f32 = 14.0;
 const ROW_HEIGHT: f32 = 34.0;
 const HEADER_HEIGHT: f32 = 30.0;
 
-/// What the change column says: `locked`, `unchanged`, or the size change and `moves`.
+/// The table's result for the frame: the row the user picked and any right-click menu choice.
+#[derive(Default)]
+pub struct TableOutput {
+    pub picked: Option<Guid>,
+    pub command: Option<Command>,
+}
+
+/// What the change column says: `will be removed`, `locked`, `unchanged`, or the size change.
 pub fn change(layout: &Layout, target: &Target, partition: &Partition) -> (String, bool) {
+    if !target.contains_key(&partition.unique_guid) {
+        return ("will be removed".to_string(), true);
+    }
     if !is_changed(layout, target, partition.unique_guid) {
         let word = if partition.content.can_move() {
             "unchanged"
@@ -53,9 +64,10 @@ pub fn change(layout: &Layout, target: &Target, partition: &Partition) -> (Strin
     (parts.join(", "), true)
 }
 
-/// Draws the table. Returns the partition the user picked, if any.
-pub fn show(ui: &mut Ui, layout: &Layout, target: &Target, selected: Option<Guid>) -> Option<Guid> {
+/// Draws the table. Returns the partition the user picked and any right-click menu choice.
+pub fn show(ui: &mut Ui, layout: &Layout, target: &Target, selected: Option<Guid>) -> TableOutput {
     let mut picked = None;
+    let mut command = None;
     let width = ui.available_width();
     let height = HEADER_HEIGHT + ROW_HEIGHT * layout.partitions.len() as f32;
     let (frame, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
@@ -114,6 +126,26 @@ pub fn show(ui: &mut Ui, layout: &Layout, target: &Target, selected: Option<Guid
         if response.clicked() {
             picked = Some(partition.unique_guid);
         }
+        let deleted = !target.contains_key(&partition.unique_guid);
+        let guid = partition.unique_guid;
+        let can_delete = deletable(partition.content);
+        let mut chosen = None;
+        response.context_menu(|ui| {
+            if deleted {
+                if ui.button("Keep this partition").clicked() {
+                    chosen = Some(Command::Restore(guid));
+                }
+            } else if ui
+                .add_enabled(can_delete, egui::Button::new("Remove this partition"))
+                .clicked()
+            {
+                chosen = Some(Command::Delete(guid));
+            }
+            ui.add_enabled(false, egui::Button::new("Format as…  (coming soon)"));
+        });
+        if chosen.is_some() {
+            command = chosen;
+        }
         let is_selected = selected == Some(partition.unique_guid);
         if is_selected {
             painter.rect_filled(rect, 0, theme::alpha(theme::SIGNAL, 0.06));
@@ -144,7 +176,7 @@ pub fn show(ui: &mut Ui, layout: &Layout, target: &Target, selected: Option<Guid
     }
     ui.painter()
         .rect_stroke(frame, 4, Stroke::new(1.0, theme::RULE), StrokeKind::Inside);
-    picked
+    TableOutput { picked, command }
 }
 
 struct Columns {
@@ -186,13 +218,15 @@ fn paint_row(
     } else {
         "empty".to_string()
     };
+    let deleted = !target.contains_key(&partition.unique_guid);
+    let name_colour = if deleted { theme::DIM } else { theme::INK };
     let cells = [
         (
             1,
             short_name(partition),
             Face::Sans(Weight::Medium),
             12.3,
-            theme::INK,
+            name_colour,
         ),
         (
             2,
@@ -214,7 +248,13 @@ fn paint_row(
         );
     }
     let (text, changed) = change(layout, target, partition);
-    let colour = if changed { theme::SIGNAL } else { theme::FAINT };
+    let colour = if deleted {
+        theme::STOP
+    } else if changed {
+        theme::SIGNAL
+    } else {
+        theme::FAINT
+    };
     let galley = widgets::elided(ui, text, theme::MONO, 11.1, colour, cols.width(5));
     widgets::text_at(
         painter,

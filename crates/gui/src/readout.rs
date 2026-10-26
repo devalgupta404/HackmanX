@@ -169,6 +169,39 @@ fn goal_readout(ui: &mut Ui, app: &App, goal: Goal) {
     };
     let layout = &probed.layout;
     readout_heading(ui, "Your change");
+    if goal == Goal::CleanUp {
+        let removed: Vec<_> = layout
+            .partitions
+            .iter()
+            .filter(|p| app.is_deleted(p.unique_guid))
+            .collect();
+        if removed.is_empty() {
+            readout_text(
+                ui,
+                "Click a partition to remove it; its space becomes free.",
+            );
+        } else {
+            let freed: u64 = removed.iter().map(|p| p.extent.len.0).sum();
+            readout_text(
+                ui,
+                &format!(
+                    "{} to remove, freeing {}.",
+                    removed.len(),
+                    size(layout, Sectors(freed))
+                ),
+            );
+        }
+        block_gap(ui);
+        readout_heading(ui, "What protects you");
+        readout_texts(
+            ui,
+            &[
+                "Only the table entry goes; the data stays on the disk until something writes over it, so a slip can be undone.",
+                "Nothing is written until you've seen the plan and the checks pass.",
+            ],
+        );
+        return;
+    }
     let Some(guid) = app.goal_partition else {
         readout_text(ui, "Pick a partition on the left, then choose how much.");
         return;

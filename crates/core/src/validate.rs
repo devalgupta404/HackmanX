@@ -4,9 +4,10 @@ use crate::layout::{Content, Extent, Geometry, Layout, Partition, Target};
 use crate::refusal::Refusal;
 use crate::units::Sectors;
 
-/// Checks that BootShift can safely turn `current` into `target`.
+/// Checks that BootShift can safely turn `current` into `target`. A partition the target leaves
+/// out is being deleted: that is allowed for everything but the ESP and BitLocker volumes.
 pub fn validate(current: &Layout, target: &Target) -> Result<(), Refusal> {
-    check_same_partitions(current, target)?;
+    check_partition_set(current, target)?;
     for partition in &current.partitions {
         if let Some(&extent) = target.get(&partition.unique_guid) {
             check_partition(&current.geometry, partition, extent)?;
@@ -15,14 +16,41 @@ pub fn validate(current: &Layout, target: &Target) -> Result<(), Refusal> {
     check_no_overlap(current, target)
 }
 
-fn check_same_partitions(current: &Layout, target: &Target) -> Result<(), Refusal> {
+fn check_partition_set(current: &Layout, target: &Target) -> Result<(), Refusal> {
     let guids: BTreeSet<_> = current.partitions.iter().map(|p| p.unique_guid).collect();
     let has_duplicates = guids.len() != current.partitions.len();
-    if has_duplicates || !guids.iter().eq(target.keys()) {
+    let unknown = target.keys().any(|guid| !guids.contains(guid));
+    if has_duplicates || unknown {
         return refuse(
-            "The new layout doesn't list exactly the partitions on this disk.".to_string(),
+            "The new layout lists a partition that isn't on this disk.".to_string(),
             "Reload the disk and arrange the partitions again.",
         );
+    }
+    for partition in &current.partitions {
+        if target.contains_key(&partition.unique_guid) {
+            continue;
+        }
+        match partition.content {
+            Content::EfiSystem => {
+                return refuse(
+                    format!(
+                        "{} is the EFI system partition, which the recovery system boots from.",
+                        partition.label()
+                    ),
+                    "Leave the EFI system partition in place.",
+                );
+            }
+            Content::BitLocker => {
+                return refuse(
+                    format!(
+                        "{} is a BitLocker volume, which BootShift never touches.",
+                        partition.label()
+                    ),
+                    "Remove it from inside Windows instead.",
+                );
+            }
+            _ => {}
+        }
     }
     Ok(())
 }
@@ -181,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn refuses_a_target_missing_a_partition() {
+    fn allows_deleting_a_partition_by_leaving_it_out() {
         let current = layout(
             100,
             vec![
@@ -191,7 +219,21 @@ mod tests {
         );
         let mut target = unchanged(&current);
         target.remove(&guid(2));
-        assert!(refusal(&current, &target).contains("exactly the partitions"));
+        assert!(validate(&current, &target).is_ok());
+    }
+
+    #[test]
+    fn refuses_deleting_the_efi_system_partition() {
+        let current = layout(
+            100,
+            vec![
+                partition(1, Content::EfiSystem, 1, 10),
+                partition(2, Content::Ext4, 20, 20),
+            ],
+        );
+        let mut target = unchanged(&current);
+        target.remove(&guid(1));
+        assert!(refusal(&current, &target).contains("EFI system partition"));
     }
 
     #[test]

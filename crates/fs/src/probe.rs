@@ -131,8 +131,8 @@ fn lsblk(columns: &str) -> CommandLine {
 fn sfdisk_starts(runner: &dyn Runner, disk: &Path) -> Result<BTreeMap<PathBuf, u64>, RunError> {
     let command = CommandLine::new("sfdisk").arg("--json").path(disk);
     let output = runner.run_ok(&command)?;
-    let dump: SfdiskDump = serde_json::from_str(&output.text())
-        .map_err(|e| unexpected(&command, e.to_string()))?;
+    let dump: SfdiskDump =
+        serde_json::from_str(&output.text()).map_err(|e| unexpected(&command, e.to_string()))?;
     Ok(dump
         .partitiontable
         .partitions

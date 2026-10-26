@@ -106,11 +106,26 @@ fn arrange(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
             for (guid, extent) in output.edits {
                 actions.push(Action::Edit(guid, extent));
             }
+            if let Some(command) = output.command {
+                actions.push(command_action(command));
+            }
         }
     });
     ui.add_space(19.0);
-    if let Some(guid) = table::show(ui, layout, &app.target, app.selected) {
+    let table_out = table::show(ui, layout, &app.target, app.selected);
+    if let Some(guid) = table_out.picked {
         actions.push(Action::Pick(guid));
+    }
+    if let Some(command) = table_out.command {
+        actions.push(command_action(command));
+    }
+}
+
+/// Turns a right-click menu choice from the bar or table into an app action.
+fn command_action(command: crate::disk_bar::Command) -> Action {
+    match command {
+        crate::disk_bar::Command::Delete(guid) => Action::Delete(guid),
+        crate::disk_bar::Command::Restore(guid) => Action::Restore(guid),
     }
 }
 
@@ -586,16 +601,7 @@ fn goal_screen(ui: &mut Ui, app: &App, goal: Goal, actions: &mut Vec<Action>, na
     let layout = &probed.layout;
 
     if goal == Goal::CleanUp {
-        let width = ui.available_width().min(layout::LEDE_MAX);
-        widgets::paragraph(
-            ui,
-            "Removing a partition isn't available in this build yet. For now, open \"Do it myself\" \
-             from Home to edit the disk directly, or pick another goal.",
-            size::LEDE,
-            theme::DIM,
-            width,
-            1.5,
-        );
+        cleanup(ui, app, actions);
         return;
     }
 
@@ -871,6 +877,153 @@ fn move_pills(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
             actions.push(Action::GoalMove(false));
         }
     });
+}
+
+fn cleanup(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
+    let Some(probed) = &app.probed else {
+        return;
+    };
+    let layout = &probed.layout;
+    let any_deleted = layout
+        .partitions
+        .iter()
+        .any(|p| app.is_deleted(p.unique_guid));
+
+    widgets::panel(ui, Margin::symmetric(19, 17), |ui| {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        bar_caption(ui, "Which partitions should go?", "click to remove");
+        for partition in &layout.partitions {
+            cleanup_row(ui, app, partition, actions);
+        }
+    });
+    ui.add_space(14.0);
+
+    widgets::panel(ui, Margin::symmetric(19, 17), |ui| {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        let note = if any_deleted {
+            "removed space turns free"
+        } else {
+            "nothing removed yet"
+        };
+        bar_caption(ui, "After the restart", note);
+        DiskBar {
+            id: "cleanup-after",
+            layout,
+            target: &app.target,
+            selected: None,
+            editable: false,
+        }
+        .show(ui);
+    });
+}
+
+fn cleanup_row(ui: &mut Ui, app: &App, partition: &Partition, actions: &mut Vec<Action>) {
+    let guid = partition.unique_guid;
+    let deleted = app.is_deleted(guid);
+    let can_delete = crate::disk_bar::deletable(partition.content);
+    let sector = app
+        .probed
+        .as_ref()
+        .map_or(512, |p| p.layout.geometry.sector_size);
+    let sense = if can_delete {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 54.0), sense);
+    let hovered = response.hovered() && can_delete;
+
+    let name_colour = if !can_delete {
+        theme::FAINT
+    } else if deleted {
+        theme::DIM
+    } else {
+        theme::INK
+    };
+    let name = widgets::galley(
+        ui,
+        partition.label(),
+        Face::Sans(Weight::SemiBold),
+        14.0,
+        name_colour,
+    );
+    let detail = format!(
+        "{}, {}",
+        partition.content.name(),
+        format_bytes(partition.extent.len.to_bytes(sector))
+    );
+    let detail = widgets::galley(ui, detail, Face::Mono(Weight::Regular), 11.0, theme::FAINT);
+    let (right_text, right_colour) = if !can_delete {
+        ("can't remove".to_string(), theme::FAINT)
+    } else if deleted {
+        ("will be removed  ·  click to keep".to_string(), theme::STOP)
+    } else {
+        ("remove".to_string(), theme::DIM)
+    };
+    let right = widgets::galley(
+        ui,
+        right_text,
+        Face::Mono(Weight::Regular),
+        11.5,
+        right_colour,
+    );
+
+    let painter = ui.painter();
+    let radius = CornerRadius::same(8);
+    let bg = if deleted {
+        theme::mix(theme::STOP, 0.07, theme::DECK_HIGH)
+    } else {
+        theme::DECK_HIGH
+    };
+    painter.rect_filled(rect, radius, bg);
+    let border = if deleted {
+        theme::alpha(theme::STOP, 0.5)
+    } else if hovered {
+        theme::RULE_HOVER
+    } else {
+        theme::RULE
+    };
+    painter.rect_stroke(rect, radius, Stroke::new(1.0, border), StrokeKind::Inside);
+
+    let sw = Rect::from_min_size(rect.left_top() + Vec2::new(14.0, 14.0), Vec2::splat(12.0));
+    painter.rect_filled(
+        sw,
+        CornerRadius::same(3),
+        theme::content_colour(partition.content),
+    );
+    widgets::text_at(
+        painter,
+        Align2::LEFT_TOP,
+        Pos2::new(sw.right() + 13.0, rect.top() + 11.0),
+        name,
+    );
+    widgets::text_at(
+        painter,
+        Align2::LEFT_TOP,
+        Pos2::new(sw.right() + 13.0, rect.top() + 30.0),
+        detail,
+    );
+    widgets::text_at(
+        painter,
+        Align2::RIGHT_CENTER,
+        Pos2::new(rect.right() - 16.0, rect.center().y),
+        right,
+    );
+
+    if can_delete {
+        if hovered {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, true, partition.label()));
+        if response.clicked() {
+            actions.push(if deleted {
+                Action::Restore(guid)
+            } else {
+                Action::Delete(guid)
+            });
+        }
+    }
+    ui.add_space(8.0);
 }
 
 /* ---------- restart ---------- */

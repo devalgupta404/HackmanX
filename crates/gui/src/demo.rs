@@ -202,6 +202,10 @@ fn list_changes(layout: &Layout, target: &Target) -> Vec<Operation> {
     let mut operations = Vec::new();
     for p in &layout.partitions {
         let Some(to) = target.get(&p.unique_guid) else {
+            // A partition the target leaves out is being deleted.
+            operations.push(Operation::Delete {
+                partition: p.unique_guid,
+            });
             continue;
         };
         let guid = p.unique_guid;

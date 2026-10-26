@@ -127,6 +127,10 @@ pub enum Action {
     Show(Screen),
     Pick(Guid),
     Edit(Guid, Extent),
+    /// Remove a partition from the layout, freeing its space.
+    Delete(Guid),
+    /// Put a deleted partition back at its original place.
+    Restore(Guid),
     StartOver,
     RunChecks,
     ToggleBackedUp,
@@ -597,6 +601,38 @@ impl App {
         }
     }
 
+    /// Removes a partition from the target, so the plan deletes it and frees its space.
+    fn delete_partition(&mut self, guid: Guid) {
+        let mut next = self.target.clone();
+        if next.remove(&guid).is_some() {
+            self.selected = None;
+            self.on_target_change(next);
+        }
+    }
+
+    /// Puts a deleted partition back where it started.
+    fn restore_partition(&mut self, guid: Guid) {
+        let Some(extent) = self
+            .probed
+            .as_ref()
+            .and_then(|p| p.layout.partition(guid))
+            .map(|p| p.extent)
+        else {
+            return;
+        };
+        let mut next = self.target.clone();
+        next.insert(guid, extent);
+        self.on_target_change(next);
+    }
+
+    /// Whether `guid` is being deleted: it is on the disk but left out of the target.
+    pub fn is_deleted(&self, guid: Guid) -> bool {
+        self.probed
+            .as_ref()
+            .is_some_and(|p| p.layout.partition(guid).is_some())
+            && !self.target.contains_key(&guid)
+    }
+
     fn start_over(&mut self) {
         if let Some(target) = self.probed.as_ref().map(|p| p.target.clone()) {
             self.on_target_change(target);
@@ -652,6 +688,8 @@ impl App {
                 next.insert(guid, extent);
                 self.on_target_change(next);
             }
+            Action::Delete(guid) => self.delete_partition(guid),
+            Action::Restore(guid) => self.restore_partition(guid),
             Action::StartOver => self.start_over(),
             Action::RunChecks => self.run_checks(),
             Action::ToggleBackedUp => self.backed_up = !self.backed_up,

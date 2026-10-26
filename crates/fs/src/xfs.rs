@@ -35,8 +35,7 @@ pub fn used_ranges(
         .arg("p dblocks blocksize agblocks logstart rbmblocks")
         .path(device);
     let sb = runner.run_ok(&sb_command)?;
-    let geometry =
-        Geometry::parse(&sb.text()).map_err(|detail| unexpected(&sb_command, detail))?;
+    let geometry = Geometry::parse(&sb.text()).map_err(|detail| unexpected(&sb_command, detail))?;
     if geometry.rbmblocks != 0 || geometry.logstart == 0 {
         return Ok(None);
     }
@@ -128,7 +127,9 @@ mod tests {
     #[test]
     fn used_is_the_complement_of_the_free_extents() {
         let runner = ScriptedRunner::new().reply(0, SB).reply(0, FREESP);
-        let used = used_ranges(&runner, Path::new("/dev/sda8")).unwrap().unwrap();
+        let used = used_ranges(&runner, Path::new("/dev/sda8"))
+            .unwrap()
+            .unwrap();
 
         // The first AG: blocks 0..6 are metadata, 6..16 and 24.. are free with 16..24 used.
         assert_eq!(used[0], 0..6 * 4096);

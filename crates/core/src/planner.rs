@@ -29,6 +29,7 @@ pub fn plan(current: &Layout, target: &Target) -> Result<Plan, PlanError> {
         parked: BTreeSet::new(),
     };
 
+    planner.delete()?;
     let swaps = planner.remove_changing_swaps()?;
     planner.shrink()?;
     planner.move_all()?;
@@ -60,6 +61,19 @@ impl Planner<'_> {
             .get(&partition.unique_guid)
             .copied()
             .ok_or(ApplyError::UnknownPartition(partition.unique_guid))
+    }
+
+    /// Removes the table entry of every partition the target leaves out. This runs first so the
+    /// space it frees is available to the moves and grows that follow.
+    fn delete(&mut self) -> Result<(), ApplyError> {
+        for partition in self.layout.partitions.clone() {
+            if !self.target.contains_key(&partition.unique_guid) {
+                self.push(Operation::Delete {
+                    partition: partition.unique_guid,
+                })?;
+            }
+        }
+        Ok(())
     }
 
     fn remove_changing_swaps(&mut self) -> Result<Vec<Partition>, ApplyError> {
@@ -273,6 +287,32 @@ mod tests {
                     len: mib(500)
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn deleting_a_partition_removes_it_first_and_frees_its_space() {
+        let current = layout(
+            100,
+            vec![
+                partition(1, Content::Ext4, 1, 20),
+                partition(2, Content::Ext4, 30, 20),
+            ],
+        );
+        // The target leaves out partition 2, so it is deleted; partition 1 grows into the room.
+        let mut target = unchanged(&current);
+        target.remove(&guid(2));
+        target.insert(guid(1), Extent::new(at(1), mib(60)));
+
+        let ops = operations(&current, &target);
+
+        assert_eq!(ops[0], Operation::Delete { partition: guid(2) });
+        assert_eq!(
+            ops[1],
+            Operation::Grow {
+                partition: guid(1),
+                len: mib(60)
+            }
         );
     }
 

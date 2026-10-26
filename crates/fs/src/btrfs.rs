@@ -59,7 +59,10 @@ fn parse_dev_tree(text: &str) -> Result<Option<Vec<Range<u64>>>, String> {
                     return Ok(None);
                 }
                 let text = words.next().unwrap_or_default().trim_end_matches(')');
-                offset = Some(text.parse().map_err(|_| format!("bad extent offset: {line}"))?);
+                offset = Some(
+                    text.parse()
+                        .map_err(|_| format!("bad extent offset: {line}"))?,
+                );
             }
         } else if let (Some(start), Some(rest)) = (offset, line.split(" length ").nth(1)) {
             let len: u64 = rest
@@ -88,7 +91,9 @@ mod tests {
     #[test]
     fn reads_used_ranges_from_a_real_dev_tree() {
         let runner = ScriptedRunner::new().reply(0, DEV_TREE);
-        let ranges = used_ranges(&runner, Path::new("/dev/sda9")).unwrap().unwrap();
+        let ranges = used_ranges(&runner, Path::new("/dev/sda9"))
+            .unwrap()
+            .unwrap();
         assert_eq!(
             runner.commands(),
             ["btrfs inspect-internal dump-tree -t dev /dev/sda9"]
@@ -101,7 +106,8 @@ mod tests {
 
     #[test]
     fn a_second_device_means_full_copy() {
-        let two_devices = DEV_TREE.replace("key (1 DEV_EXTENT 13631488)", "key (2 DEV_EXTENT 13631488)");
+        let two_devices =
+            DEV_TREE.replace("key (1 DEV_EXTENT 13631488)", "key (2 DEV_EXTENT 13631488)");
         let runner = ScriptedRunner::new().reply(0, &two_devices);
         assert_eq!(used_ranges(&runner, Path::new("/dev/sda9")).unwrap(), None);
     }

@@ -22,6 +22,9 @@ pub enum Operation {
     RemoveSwap { partition: Guid },
     /// Add the swap partition back at its target, with the same UUID and label.
     RecreateSwap { partition: Partition },
+    /// Remove a partition's entry from the table, freeing its space. The data is left on the disk,
+    /// unreferenced, until something writes over it, so a mistaken delete is recoverable.
+    Delete { partition: Guid },
 }
 
 impl Operation {
@@ -31,7 +34,8 @@ impl Operation {
             Operation::Shrink { partition, .. }
             | Operation::Move { partition, .. }
             | Operation::Grow { partition, .. }
-            | Operation::RemoveSwap { partition } => *partition,
+            | Operation::RemoveSwap { partition }
+            | Operation::Delete { partition } => *partition,
             Operation::RecreateSwap { partition } => partition.unique_guid,
         }
     }
@@ -61,6 +65,7 @@ impl Operation {
             Operation::RecreateSwap { partition } => {
                 format!("Recreate swap {name} at {}", at(partition.extent.start))
             }
+            Operation::Delete { .. } => format!("Remove {name}"),
         }
     }
 }
@@ -115,7 +120,7 @@ impl Layout {
                 ensure(p.extent.start == *from && p.extent.len == *len, *partition)?;
                 p.extent.start = *to;
             }
-            Operation::RemoveSwap { partition } => {
+            Operation::RemoveSwap { partition } | Operation::Delete { partition } => {
                 let index = self
                     .partitions
                     .iter()
