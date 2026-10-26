@@ -89,14 +89,15 @@ issues.md   Known defects and gaps, each naming the task that closes it. Remove 
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace                       # fast: unit, proptest, CrashDisk
-cargo xtask vm-test                          # privileged integration tests inside QEMU (NOT BUILT YET, issue I-01)
-cargo xtask crash-suite --nightly            # dm-log-writes, dm-dust, kill-QEMU loops (NOT BUILT YET, issue I-01)
+cargo xtask prepare-vm                       # build the provisioned QEMU guest image (once)
+cargo xtask vm-test                          # privileged tests inside the guest, never on the host
+cargo xtask boot-proof                       # end to end: apply, restart, power cut mid-move, resume
 cargo +nightly fuzz run journal_decode       # in crates/core
 cargo build -p bootshift-cli --release --target x86_64-unknown-linux-musl
 cargo deny check                             # licences + advisories
 ```
 
-Before saying a task is done, run fmt, clippy and `cargo test --workspace`. If the change touches `disk`, `engine` or `fs`, also run `cargo xtask vm-test` — until task 2.3b builds it (issue I-01), verify those changes by hand in a QEMU VM instead, never on a real disk.
+Before saying a task is done, run fmt, clippy and `cargo test --workspace`. If the change touches `disk`, `engine`, `fs` or `boot`, also run `cargo xtask boot-proof`.
 
 ## Code style
 

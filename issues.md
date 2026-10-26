@@ -6,12 +6,6 @@ it. Remove an issue in the same change that fixes it.
 
 ## Release blockers
 
-- **I-01 `xtask` is an empty stub.** `xtask/src/main.rs` is `fn main() {}`, so the
-  `cargo xtask fixture`, `vm-test` and `crash-suite` commands that `CLAUDE.md` tells every
-  contributor to run do not exist. Blocks tasks 2.4, 2.5, 8.5 and all of Phase 11.
-- **I-02 The boot path has never run.** `apply`, the GRUB redirect, recovery as PID 1 and
-  `resume` are written and tested against fakes, but have never executed in a VM. Every bit of
-  confidence so far comes from simulated disks. Tasks 0.5, 10.2, 10b.2, 2.5.
 - **I-03 Guarded runs have no kernel transport.** The undo-log core (`disk::guard`,
   `disk::UndoLog`, `disk::roll_back`) is crash-tested, but nothing connects `resize2fs` or
   `ntfsresize` to it, so at runtime ext4/NTFS shrink and NTFS grow refuse with "this needs a
@@ -26,25 +20,10 @@ it. Remove an issue in the same change that fixes it.
 - **I-04 The desktop app does not exist.** `gui/src-tauri` is absent; `chooseBackend()` can
   only ever take the demo branch, so the GUI has never talked to `bootshiftd`, and the helper
   has never been called by anything but its own smoke test. Task 13.5.
-- **I-05 No progress reporting.** `move_range` has no observer hook, and the recovery screen
-  is two `eprintln` lines followed by silence for the whole copy. Neither recovery nor a future
-  GUI can show percent or time left without one. Task 10.3 (needs a `ProgressSink` trait in the
-  engine).
-- **I-07 `accept_unreadable` is unreachable.** The copier supports copying past unreadable
-  sectors after explicit consent, but no CLI flag, recovery prompt or GUI control can turn it
-  on. An EIO is a hard stop with no accept path. Task 5.4.
 - **I-08 systemd-boot is not supported yet**, though section 0 scopes it in (without Secure
   Boot). Preflight refuses it. Task 10.5.
-- **I-11 Btrfs and XFS moves copy every byte.** Their used-ranges readers aren't written, so
-  the scope falls back to `Everything`. Correct but slow, and the estimate shows it honestly.
-  Tasks 7.6, 7.7.
-
 ## Paper cuts
 
-- **I-09 The recovery error screen waits for Enter forever.** If the keyboard modules failed
-  to load, the machine sits silently instead of powering off. Needs a timeout. Task 10.2.
-- **I-10 The helper's work directory is never cleaned.** `bootshiftd` builds initramfs
-  artifacts in a fixed `$TMPDIR/bootshiftd` that survives failed runs. Task 12.4.
 - **I-12 No cancel or undo.** Task 8.6.
 - **I-13 No dm-linear staging check** before the first table write. Task 8.3.
 - **I-14 The GUI stops at "restart later".** The restart screen and post-restart summary now
@@ -54,5 +33,34 @@ it. Remove an issue in the same change that fixes it.
 
 ## Fixed
 
+- **I-02 The boot path had never run.** Retired 2026-10-26: `cargo xtask boot-proof` runs the
+  whole chain in a QEMU/OVMF guest on its own SATA disk — `apply`, reboot into recovery as
+  PID 1, a real ext4 partition moved, **the VM killed mid-move at ~9% (a true power cut)**, the
+  resume from the journal, and verification that every one of 1.2 GB of file hashes matches,
+  the table is on target, the GRUB redirect is gone and the boot order restored. Bugs this
+  flushed out along the way, none in the safety core: SMART refused on QEMU's NVMe (switched
+  the guest to SATA); `filefrag` returns an empty table on vfat (added a FIBMAP ioctl path,
+  `disk::fibmap`); `/dev/kmsg` needs one write per record (recovery messages were blank);
+  plus harness-only fixes (growpart, umount-busy, stale binary, serial strings).
+- **I-01 `xtask` was an empty stub.** Fixed 2026-10-26: `cargo xtask prepare-vm`, `vm-test`
+  and `boot-proof` are real (QEMU + OVMF guest, NVMe disk, cloud-init). The nightly
+  `crash-suite` is still to come (Phase 11).
+- **I-05 No progress reporting.** Fixed 2026-10-26: the engine has a `ProgressSink`
+  (operation + bytes-copied callbacks on every committed chunk), and recovery prints the
+  operation and a line every five percent. Time-left is still to do (task 10.3).
+- **I-07 `accept_unreadable` was unreachable.** Fixed 2026-10-26: `bootshift resume
+  --accept-unreadable`, and the recovery error screen names the command when a read fails.
+- **I-09 The recovery error screen waited for Enter forever.** Fixed 2026-10-26: it powers
+  off by itself after five minutes.
+- **I-10 The helper's work directory could collide.** Fixed 2026-10-26: one directory per
+  apply call, removed afterwards.
+- **I-11 Btrfs and XFS moves copied every byte.** Fixed 2026-10-26: Btrfs used ranges come
+  from the dev-extent tree (`btrfs inspect-internal dump-tree -t dev`), XFS as the complement
+  of `xfs_db "freesp -d"`. Multi-device Btrfs, realtime XFS and external logs fall back to a
+  full copy on purpose.
+- **I-17 `probe` failed on util-linux older than 2.37** (Ubuntu 20.04 and kin): the PARTN,
+  START and MOUNTPOINTS columns don't exist there, partitions come flat, and older lsblk
+  quotes numbers. Fixed 2026-10-26: a compat column set, flat grouping, numbers from device
+  names, start sectors from `sfdisk --json`, forgiving number/bool parsing.
 - **I-16 `CLAUDE.md` told contributors to run commands that don't exist** (`cargo xtask …`,
-  see I-01). Fixed 2026-10-26: the commands are now marked as not yet built.
+  see I-01). Fixed 2026-10-26: the commands are now the real ones.

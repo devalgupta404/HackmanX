@@ -150,10 +150,9 @@ These are the results of the research pass on 2026-10-25. Each item is a correct
 
 These test the assumptions most likely to kill the project. Use VMs, plus one real laptop where noted. Write findings back into section 1.
 
-- [~] **0.1** Install the toolchain.
-  - Rust is installed: stable 1.99.1 + `x86_64-unknown-linux-musl`. The skeleton builds and the static musl binary links.
-  - Still needed (requires sudo): `qemu-system-x86 qemu-utils ovmf swtpm btrfs-progs xfsprogs smartmontools`. Then `cargo install cargo-fuzz cargo-deny`.
-  - Done when: `qemu-system-x86_64 --version` works.
+- [x] **0.1** Install the toolchain.
+  - Rust stable + musl target, qemu-system-x86, qemu-utils, OVMF, cloud-image-utils, btrfs-progs, xfsprogs, smartmontools, musl-tools: installed on the hackathon Linux box (Ubuntu 20.04). `swtpm` doesn't exist on 20.04; it is only needed for the Secure Boot suite (11.4). `cargo install cargo-fuzz cargo-deny` still to do.
+  - Note: the box's BIOS shipped with VT-x disabled; xtask falls back to TCG emulation when `/dev/kvm` is missing. Enable VTx in the BIOS for 15x faster VMs.
 - [ ] **0.2** Windows boots after its partition moves.
   - In a Windows 11 eval VM (OVMF + Secure Boot), move C: offline with `sfdisk --move-data`, keeping the disk GUID and PARTUUID.
   - Fix NTFS `0x1C` and the backup boot sector, then boot.
@@ -202,8 +201,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - At a chosen crash point, pending writes may be dropped, applied, reordered, or torn at 512 B, and the sector in flight may be left as garbage. Without garbling, records under 512 B looked safe even in a single slot.
   - Records every write and flush, so a test can enumerate all crash points.
   - Done when: its own tests reproduce lost, reordered and torn writes deterministically from a seed.
-- [ ] **2.3b** Make `cargo xtask` real (issue I-01: today it is an empty `fn main() {}`, so none of the xtask commands CLAUDE.md names exist): `fixture`, `vm-test` and `crash-suite` subcommands.
-  - Done when: `cargo xtask vm-test` runs 2.5's sample test.
+- [~] **2.3b** Make `cargo xtask` real: done for `prepare-vm` (provisioned OVMF guest with an NVMe disk, packages, a checksummed data partition and the static binary), `vm-test` (2.5's loop-device sample inside the guest) and `boot-proof` (8.5's end-to-end with a power cut). `crash-suite` (Phase 11) is still to come.
 - [ ] **2.4** Test fixtures (`cargo xtask fixture`).
   - Build disk images with a chosen GPT layout and ext4, NTFS, Btrfs, XFS and swap filesystems, filled with files of known content.
   - Write a manifest of file hashes.
@@ -268,7 +266,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - On EIO the copier stops, keeps the journal, and reports the exact block, found by rereading block by block.
   - `accept_unreadable` writes zeros and lists the lost blocks.
   - Unreadable blocks outside the used ranges are never read.
-  - Still missing (issue I-07): nothing can turn `accept_unreadable` on — no CLI flag, recovery prompt or GUI control. An EIO is a hard stop with no accept path.
+  - `bootshift resume --accept-unreadable` turns it on from a live USB, and the recovery error screen names that command when a read fails (2026-10-26). A GUI control is still to come.
 - [x] **5.5** Used-range copy: `CopyScope::used_only` merges ranges and always adds the first and last MiB. Pieces are block-aligned and clipped to their chunk, and chunks without data are skipped without a commit.
 - [ ] **5.6** Oracle test in the VM: move a real ext4 image with our copier and with `sfdisk --move-data`, then compare the bytes.
 
@@ -302,6 +300,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - `signature` runs `blkid --probe` for the recovery system, which has no udev.
   - `core::layout::Guid` parses the canonical text form.
   - Tests: a dual-boot + USB fixture, this machine's real `lsblk` output, and `blkid` on image files.
+  - util-linux older than 2.37 (Ubuntu 20.04 and kin) has no PARTN/START/MOUNTPOINTS columns, lists partitions flat, and (before 2.34) quotes numbers. `disks` falls back to a compat column set, derives numbers from device names, and reads start sectors from `sfdisk --json` (2026-10-26).
 - [~] **7.3** (block-level core done in `disk::guard`; kernel transport and executor wiring pending) Guarded runs, using the design chosen in 0.6. Durable undo log, rollback, rerun.
   - Crash tests use CrashDisk (unit) and dm-log-writes (VM).
 - [~] **7.4** (adapter done; the guarded wrapping waits on 7.3) `fs::ext4`.
@@ -314,8 +313,8 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - `resize_offline` (shrink, or grow to fill the partition).
   - `DirtyMark`: `ntfsresize` always marks the volume for checking, so after BootShift's own resize the mark is expected and `--force` is passed. A volume found dirty is refused.
   - The boot sector `0x1C` and backup boot-sector fix is a raw write, done in the executor's move step.
-- [ ] **7.6** `fs::btrfs`: mount in recovery; `btrfs filesystem resize <size>` before a move, `max` after. Used ranges from the dev-extent tree.
-- [ ] **7.7** `fs::xfs`: move, then `xfs_growfs` online after the restart. Used ranges from `xfs_db -r` free-space data, cross-checked against a full copy.
+- [~] **7.6** `fs::btrfs`: resize (mounted) and check existed; used ranges from the dev-extent tree (`btrfs inspect-internal dump-tree -t dev`) landed 2026-10-26, with a real-image fixture test; a filesystem spanning several devices falls back to a full copy. Still to prove in the VM: mounted resize in recovery.
+- [~] **7.7** `fs::xfs`: grow (mounted) and check existed; used ranges landed 2026-10-26 as the complement of `xfs_db -r "freesp -d"` over the data area (real-image fixture test; realtime devices and external logs fall back to a full copy). Still to prove in the VM: `xfs_growfs` in recovery.
 - [x] **7.8** `fs::swap::recreate`: `mkswap --uuid --label`, tested on an image file through `blkid`. The hibernation check is the `swsuspend` signature (7.2).
 - [ ] **7.9** `fs::opaque`: full byte-for-byte move with no resize, for LVM PV, LUKS, FAT data and unknown contents.
 - [~] **7.10** Adapter tests against the real tools.
@@ -350,7 +349,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - Sampled second crashes during recovery resume too.
   - A finished run resumes to no work at all.
   - Mutation-checked: writing the table one operation behind fails.
-- [ ] **8.5** VM integration on loop devices: the reference layout (Windows, recovery, Linux, in both directions) and random layouts, end to end. All file hashes match afterwards.
+- [~] **8.5** `cargo xtask boot-proof` runs the reference move end to end in a VM with a real power cut at ~9% and verifies every file hash, the table, GRUB and boot order (first green 2026-10-26). Still to add: both directions, random layouts, and NTFS/Btrfs/XFS/swap in the same run.
 - [ ] **8.6** Cancel and undo: cancelling before step 3 is free; "Undo last change" runs the reverse plan when the space allows.
 
 ### Phase 9 — Preflight checks
@@ -375,19 +374,20 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
     - module files from `modprobe --show-depends --set-version` (built-in or missing modules skipped), kmod's `modules.*` indexes, and `/etc/bootshift/modules`.
   - `compress` uses `zstd -19`.
   - Tested by building a real initramfs from this machine.
-- [~] **10.2** (written; needs a VM boot to prove) Recovery as PID 1 (`cli::recover::run_as_init`, started automatically when the binary is PID 1; there is no manual `recover` subcommand).
+- [x] **10.2** Recovery as PID 1 (`cli::recover::run_as_init`, started automatically when the binary is PID 1; there is no manual `recover` subcommand). Proven in the VM 2026-10-26: it mounts its filesystems, finds the disk, resumes from the journal after a power cut and finishes. Messages go through `/dev/kmsg` so they reach the screen and the serial console.
   - Mounts proc, sys, devtmpfs, /run and efivarfs, and loads `/etc/bootshift/modules` with `modprobe`.
   - Parses `/proc/cmdline` and waits up to 60 s for the disk whose GPT disk GUID matches.
   - `engine::recovery::run` checks the table still matches the plan before the first write (if not: restore booting, finish the journal, stop). Then it executes, restores booting and commits Done. The disk is opened `ReadWriteShared` so tools can open partitions.
   - Never touches the ESP during the move; it is mounted only when restoring booting.
-  - The error screen waits for Enter forever; if the keyboard modules failed to load, the machine hangs instead of powering off. Needs a timeout (issue I-09).
+  - The error screen powers off by itself after five minutes if Enter never comes (2026-10-26).
 - [~] **10.3** (text messages done; progress bar and time left pending) Recovery screen.
   - Shows what it is doing and "If the power goes out, just turn the computer back on."
   - On an error: explains, keeps the redirect, waits for Enter, then powers off. It never boots an OS over a half-moved disk.
-  - Needs a `ProgressSink` hook in `move_range`/the executor first, so recovery (and later the GUI) can show percent and time left without touching the copy loop's safety ordering (issue I-05). Today the screen is silent for the whole copy.
+  - The engine has a `ProgressSink` (operation announcements plus bytes-copied after every committed chunk), and recovery prints the operation and a line every five percent (2026-10-26). Time left is still to do.
 - [x] **10.4** `boot::journal_file` (plus `engine::prepare`, which copies the kernel and initramfs).
   - `create` writes the journal file and fsyncs it and its directory.
   - `extents` locates it with `filefrag -v -b512` (FIEMAP), refusing extents flagged delalloc, unknown, inline, encoded or not_aligned, and turning them into whole-disk offsets.
+  - vfat answers FIEMAP with an empty table (found live, 2026-10-26), so an empty table falls back to the FIBMAP ioctl (`disk::fibmap`), block by block, coalesced. FIBMAP needs root, which apply has.
   - `boot::cmdline::RecoveryArgs` hands recovery the disk GUID and the journal's pieces on the kernel command line: `bootshift.disk=… bootshift.journal=<offset>+<len>,…`.
 - [~] **10.5** (GRUB done; systemd-boot pending) `boot::grub`.
   - `recovery_config` boots `EFI/bootshift/vmlinuz` and `initrd.img` with no menu.
@@ -407,7 +407,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - `engine::probe::layout` builds the planner's layout from the GPT, `lsblk`, `tune2fs`/`resize2fs -P` and `ntfsresize --info`. A failed measurement counts as full with no minimum.
   - `engine::facts::gather` collects every preflight fact. GRUB vendor: the only one, or the one named like BootCurrent's entry; refused if that can't be told.
   - A target file maps PARTUUIDs to `{start, len}` in sectors. `probe --target-template` prints the current layout to start from.
-- [~] **10b.2** (written; needs a VM run to prove) `bootshift apply <disk> <target.json> [--yes] [--init <static binary>]`.
+- [x] **10b.2** `bootshift apply <disk> <target.json> [--yes] [--init <static binary>]` — proven end to end in the VM 2026-10-26 (checks, ESP prepare, journal, GRUB redirect, boot order, restart).
   - Plans and runs every check. Without `--yes` it stops, having changed nothing.
   - Refuses an `--init` binary that isn't static.
   - `engine::prepare`, in order:
@@ -445,7 +445,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - systemd unit (`Type=dbus`).
   - polkit policy: inspect is allowed for the active user; apply always asks for the admin password.
   - The XML is checked with `xmllint`.
-- [ ] **12.4** Clean up the helper's work directory (issue I-10): `$TMPDIR/bootshiftd` is created once with a fixed name and never cleaned, so initramfs artifacts from failed runs survive.
+- [x] **12.4** Clean up the helper's work directory: one uniquely named directory per apply call, removed afterwards (2026-10-26).
 
 ### Phase 13 — GUI (Tauri 2)
 
@@ -467,7 +467,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 - [x] **14.1** README: how it works, what it can do (with today's guarded-run gaps stated honestly), what it refuses and why, how to recover (power cut, error screen, live-USB `resume`, table backup), commands and building.
 - [ ] **14.2** `docs/design.md`: the PDF design updated with section 1.
 - [ ] **14.3** Packages: `.deb`, `.rpm` and AppImage for the GUI, which pull in the filesystem tools as dependencies.
-- [ ] **14.4** Demo script and recording for the hackathon.
+- [~] **14.4** Demo script written (`DEMO.md`: browser flow + `cargo xtask boot-proof` as the live proof). Recording still to do.
 
 ### Phase 15 — Real hardware gate
 
