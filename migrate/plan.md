@@ -251,7 +251,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 
 - [ ] **5.1 Source probe and preflight** (§A3), refusals with reason and fix.
 - [ ] **5.2 Bulk reader.** Used ranges only, via the `bootshift-fs` adapters; always the first and last MiB of each partition. Reads are chunked and pipelined.
-- [ ] **5.3 Compare pass.** Hash source chunks, compare with the index, send mismatches.
+- [x] **5.3 Compare pass.** Hash source chunks, compare with the index, send mismatches.
 - [ ] **5.4 Resend on reconnect.** Every unacknowledged range is marked dirty again.
 
 ### Phase 6 — Tracking and convergence

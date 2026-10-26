@@ -9,3 +9,13 @@ publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+thiserror.workspace = true
+blake3.workspace = true
+bootshift-disk.workspace = true
+bootshift-migrate-core = { path = "../core" }
+
+[dev-dependencies]
+bootshift-migrate-testkit = { path = "../testkit" }
+bootshift-migrate-receive = { path = "../receive" }
