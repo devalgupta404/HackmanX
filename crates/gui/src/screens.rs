@@ -417,6 +417,9 @@ fn home(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
             ui.add_space(12.0);
         }
     } else {
+        // `columns` puts `item_spacing.x` between the cards, and `show` zeroed it, so without
+        // this the two borders touch and read as one stuck-together box.
+        ui.spacing_mut().item_spacing.x = 12.0;
         for pair in middle.chunks(2) {
             ui.columns(2, |cols| {
                 for (i, &goal) in pair.iter().enumerate() {
@@ -441,7 +444,7 @@ fn goal_colour(goal: Goal) -> Color32 {
 
 fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut Vec<Action>) {
     let width = ui.available_width();
-    let height = if featured { 98.0 } else { 86.0 };
+    let height = if featured { 98.0 } else { 96.0 };
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), Sense::click());
     let enabled = app.probed.is_some();
     let hovered = response.hovered() && enabled;
@@ -459,13 +462,15 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
         Vec2::splat(if featured { 46.0 } else { 42.0 }),
     );
     let text_x = chip.right() + 15.0;
-    let blurb = widgets::elided(
+    // Wrap, don't elide: on the narrow two-column cards a single line cut the sentence short.
+    let blurb = widgets::wrapped(
         ui,
         goal.blurb(),
         Face::Sans(Weight::Regular),
         13.0,
         theme::alpha(theme::DIM, reveal),
         rect.right() - text_x - 18.0,
+        1.35,
     );
     let tag = match goal {
         Goal::InstallOs => Some(("MOST COMMON", theme::SIGNAL)),
