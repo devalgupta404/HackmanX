@@ -94,7 +94,10 @@ dependencies = [
  "bootshift-core",
  "bootshift-disk",
  "bootshift-fs",
+ "gptman",
  "proptest",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
 ]

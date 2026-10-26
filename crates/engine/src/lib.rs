@@ -2,3 +2,6 @@
 //! and final verification.
 
 pub mod copier;
+pub mod executor;
+mod ntfs_boot;
+pub mod run_plan;

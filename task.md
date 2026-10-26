@@ -319,12 +319,28 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 8 — Executor (the eight steps)
 
-- [ ] **8.1** `engine::executor`: drive `Planned → Checks → Shrink → Move → UpdateTable → Grow → Verify → Done` from the journal.
-  - Steps 3–6 repeat per partition.
-  - Every step is idempotent and resumes from the journal alone.
-- [ ] **8.2** `engine::verify`: recompute hash chains over the destinations, run fsck, and compare with the plan.
+- [x] **8.1** `engine::executor::execute`: runs the plan from the journal alone, one step at a time, committing every step.
+  - Stages: `Prepared → Running → Verifying → Finishing`. `Finishing → Done` belongs to the boot layer, which restores normal booting.
+  - Per operation:
+    - Shrink: guarded filesystem shrink, then the table.
+    - Move: record the scope, copy, verify, fix NTFS boot sectors, then the table.
+    - Grow: the table, then the filesystem.
+    - RemoveSwap: the table.
+    - RecreateSwap: the table, then `mkswap`.
+  - Each table write rebuilds `layouts[k+1]` from whichever GPT copy is valid, then runs `partx --update`.
+  - Filesystem tools sit behind the `Filesystems` trait.
+  - `RunPlan` (start layout + plan) is the plan record's payload, stored as JSON so it can be read from a live USB.
+  - `ntfs_boot::fix_hidden_sectors` updates both NTFS boot sectors after a move (UEFI ignores the field when the start doesn't fit 32 bits).
+- [~] **8.2** (in place; real tool checks wait on the adapters' recovery wiring) Verification.
+  - After each move, `verify_move` re-reads the whole destination and must match the committed hash chain before the table changes.
+  - At the end, every changed filesystem goes through `Filesystems::check`.
 - [ ] **8.3** dm-linear staging (from g2p/blocks): before the real table is written, map the target layout with dm-linear and fsck every moved filesystem through it. Abort before step 5 if anything fails.
-- [ ] **8.4** Crash tests: full plans on CrashDisk with in-memory fakes for the filesystem tools. Crash at every journal commit and every flush, and resume until Done.
+- [x] **8.4** Crash tests (`crates/engine/tests/executor.rs`).
+  - A real GPT disk (ESP holding the journal, plus NTFS, ext4 and swap) and a planner-made plan: remove swap, shrink, move, grow, recreate swap.
+  - Every crash point × lost / landed / 4 scrambled outcomes resumes to the target table, intact data and stage Finishing.
+  - Sampled second crashes during recovery resume too.
+  - A finished run resumes to no work at all.
+  - Mutation-checked: writing the table one operation behind fails.
 - [ ] **8.5** VM integration on loop devices: the reference layout (Windows, recovery, Linux, in both directions) and random layouts, end to end. All file hashes match afterwards.
 - [ ] **8.6** Cancel and undo: cancelling before step 3 is free; "Undo last change" runs the reverse plan when the space allows.
 

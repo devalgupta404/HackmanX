@@ -14,11 +14,14 @@ bootshift-disk.workspace = true
 bootshift-fs.workspace = true
 bootshift-boot.workspace = true
 blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
 tempfile.workspace = true
+gptman.workspace = true
 
 [lints]
 workspace = true
