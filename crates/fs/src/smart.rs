@@ -14,8 +14,11 @@ pub enum Health {
     Unknown(String),
 }
 
-/// `smartctl` exit status bits that mean it couldn't talk to the drive at all.
-const COMMAND_FAILED_BITS: i32 = 0b0000_0111;
+/// `smartctl` exit status bits that mean it couldn't talk to the drive at all: a command-line
+/// error, or the device failed to open. Bit 2 ("a SMART command failed") is not fatal on its
+/// own: drives that lack an optional log page set it while still reporting their health, QEMU's
+/// NVMe among them. The health verdict in the JSON decides; no verdict stays `Unknown`.
+const NO_DATA_BITS: i32 = 0b0000_0011;
 
 /// The drive's own overall health assessment. A missing `smartctl` or an unreadable drive is
 /// reported as `Unknown`, never as healthy.
@@ -27,7 +30,12 @@ pub fn health(runner: &dyn Runner, disk: &Path) -> Health {
     match runner.run(&command) {
         Err(error) => Health::Unknown(error.to_string()),
         Ok(output) => match output.status {
-            Some(status) if status & COMMAND_FAILED_BITS == 0 => parse_health(&output.text()),
+            Some(status) if status & NO_DATA_BITS == 0 => match parse_health(&output.text()) {
+                Health::Unknown(detail) => {
+                    Health::Unknown(format!("smartctl exited with {status}: {detail}"))
+                }
+                verdict => verdict,
+            },
             status => Health::Unknown(format!("smartctl exited with {status:?}")),
         },
     }
@@ -83,6 +91,22 @@ mod tests {
     fn a_failing_drive_still_parses_despite_its_exit_status() {
         let runner = ScriptedRunner::new().reply(8, FAILED);
         assert_eq!(health(&runner, Path::new("/dev/sda")), Health::Failing);
+    }
+
+    #[test]
+    fn a_verdict_counts_even_when_one_smart_command_failed() {
+        // QEMU's NVMe: an optional log page is unsupported (exit bit 2), the verdict is real.
+        let runner = ScriptedRunner::new().reply(4, PASSED);
+        assert_eq!(health(&runner, Path::new("/dev/nvme0n1")), Health::Passed);
+    }
+
+    #[test]
+    fn an_exit_bit_2_without_a_verdict_stays_unknown() {
+        let runner = ScriptedRunner::new().reply(4, r#"{"device":{}}"#);
+        assert!(matches!(
+            health(&runner, Path::new("/dev/nvme0n1")),
+            Health::Unknown(_)
+        ));
     }
 
     #[test]
