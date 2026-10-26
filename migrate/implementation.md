@@ -104,11 +104,13 @@ impl ConvergenceModel {
 Cutover state machines are plain enums with a pure transition function. Every transition that has a side effect returns the action for the caller to do, and the caller journals the new state before doing it.
 
 ```rust
-pub enum ReceiverState { Receiving, Final, Committed, Finalizing(FinalizeStep), Booted, Verified, RolledBack }
-pub enum SenderState   { Syncing, Quiescing, FinalPass, Committed, RollingBack, Thawed }
+pub enum ReceiverState { Receiving, Final, Committed, AwaitingSurrender, Finalizing(FinalizeStep), Booted, Verified, RolledBack }
+pub enum SenderState   { Syncing, Quiescing, FinalPass, Committed, Surrendered, RollingBack, Thawed }
 
 pub fn receiver_next(state: &ReceiverState, event: ReceiverEvent) -> Result<(ReceiverState, Action), Refuse>;
 ```
+
+The fence fails closed (A7.4): the receiver may leave `AwaitingSurrender` for `Finalizing` **only** on a durable `SourceSurrendered(epoch)` token from the sender; a `Committed` receiver that never received the token stays down for that epoch for ever. The sender reaches `Surrendered` only after it has frozen and powered off / been fenced, and before that its watchdog may always thaw it back to serving (never into a second live copy, because the target cannot have booted without the token). `plan.md` 3.5 tests this exhaustively.
 
 The layout map is a list of `(source: DiskRange, target: DiskRange)` pairs, built with the `bootshift-core` planner. It is checked to be one-to-one and to keep every identity field (M9).
 
@@ -128,6 +130,7 @@ The layout map is a list of `(source: DiskRange, target: DiskRange)` pairs, buil
 | `PassEnd` | S→R | pass number, kind, stats |
 | `Freeze` / `FinalRoot` | S→R | source Merkle root at freeze |
 | `Commit` / `Committed` | S→R / R→S | epoch, roots, receipt digest |
+| `Surrendered` | S→R | epoch — sent by the source as its last act after freezing and powering off/fencing; the only token that lets a `Committed` target boot (A7.4) |
 | `Rollback` / `RolledBack` | either / R→S | epoch |
 | `Export` | R→S | mirror mode: transport, address, NQN/IQN |
 | `Error` | both | typed refusal: reason + fix |

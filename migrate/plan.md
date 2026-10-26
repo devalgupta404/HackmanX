@@ -98,9 +98,12 @@ The common shape is: **copy everything once, keep sending changes, optionally te
 
 ### 1.3 Gaps nobody covers (where we win)
 
-- **No product publishes a final proof** that the target equals the source at the freeze point.
+*Verified against vendor docs, October 2026; citations in §8.*
+
+- **No product publishes a final proof** that the target equals the source at the freeze point. Azure agentless runs an **internal** per-cycle checksum but keeps no artefact you can hold or re-verify; everywhere else integrity validation is a **manual, do-it-yourself step** (run your own hashes, or row-level DB validation via AWS DMS). None sign a receipt that anyone can re-check.
 - **Failures cost a lot.** A target or link failure often means a rescan, a reseed or a cycle reset.
-- **No product reshapes the target disk.** MGN creates 1:1 same-size volumes, and the others copy block for block.
+- **No product reshapes the target disk as part of the migration.** AWS MGN *can* enlarge a volume (you choose a bigger EBS size in the launch template), **but growing the filesystem and fixing the partition layout is a manual post-migration step**; Nutanix/HCX/Move clone the disk at its source size. None move partitions or grow filesystems automatically during the migration. (So the earlier "MGN is 1:1" shorthand was wrong: MGN enlarges the *raw volume*, not the layout.)
+- **The source is always touched.** Agent tools (MGN, Zerto) install software in the source guest. Agentless tools (Azure Migrate, Nutanix Move, VMware HCX) take **VMware snapshots on the source datastore** each cycle and consolidate them, with guest stun. None read the source purely read-only.
 - **Every product is locked to one target**, and the in-guest agents need kernel modules.
 - **No product predicts downtime from measured churn** or gives a go/no-go gate.
 - **The guest changes for new hardware are undocumented** and can't be undone.
@@ -109,16 +112,18 @@ The common shape is: **copy everything once, keep sending changes, optionally te
 
 ## 2. What we sell
 
-**One line:** *AWS MGN's workflow for any VM to any VM, with no kernel module, a resume that never starts over, a cutover that is guaranteed to converge, a target reshaped to its new disk, and a signed proof that nothing was lost.*
+**Headline (the three verified differentiators, §1.3):** *Migrate any Linux machine onto any new disk — automatically reshaped and grown to fit — with a signed receipt proving it is byte-for-byte identical, and the source never written, so rollback is one power button.*
+
+The three starred USPs below (**U1 proof**, **U4 reshape**, **U6 untouched source**) are the headline: no incumbent has any of them, and all three reuse BootShift's copier, journal, planner and grow adapters almost directly. Everything else — Track mode, Mirror mode, rehearsal — makes the migration **faster, not more differentiated**, so it is built *on top* of the verified base, in the §5 order, each step "only faster, never less safe". **Downtime is a measured spec, not the headline:** sub-second in LVM mirror mode, seconds with the tracker, minutes under heavy churn with no tracker — always finishing safely, because the cutover is verified-first (MD4) and fails closed (§A7).
 
 | # | USP | Who lacks it | How we deliver it |
 |---|---|---|---|
-| U1 | **Proof of copy.** A signed receipt with the blake3 Merkle root of the source at freeze, which must equal the root of the target. After go-live, a background re-read of the preserved source checks every byte with no extra downtime | All; Azure checks only per cycle | Receiver keeps a durable hash per chunk (§A4 in `architecture.md`); source re-read after cutover |
+| **U1 ★** | **Proof of copy.** A signed receipt with the blake3 Merkle root of the source at freeze, which must equal the root of the target, re-verifiable by anyone with both disks. After go-live, a background re-read of the preserved source checks every byte with no extra downtime | **All.** Azure's per-cycle checksum is internal and kept by no one; elsewhere integrity validation is a manual DIY step (your own hashes, or AWS DMS row checks) | Receiver keeps a durable hash per chunk (§A4 in `architecture.md`); source re-read after cutover |
 | U2 | **Resume, never restart.** A target or link failure resumes from the last chunk the receiver recorded. A source reboot needs only a hash-compare pass that re-reads the disk but sends only the differences | MGN rescans; Azure resets after 90 min; Move reseeds | Journal plus hash index on the receiver; the sender marks every unacknowledged range dirty again |
 | U3 | **Cutover that is guaranteed to converge, with a forecast.** We measure churn and link speed, predict the final delta and downtime, and step up from tracking to a throttle to a synchronous mirror. Cutover is a go/no-go gate on the predicted downtime | Proxmox stalls; MGN backlog; HCX "minutes to hours" | Convergence controller (§A6) |
-| U4 | **Target reshaped to its new disk.** A bigger disk, grown filesystems, moved partitions, LVM extended | MGN 1:1; the others clone | BootShift planner + grow adapters |
+| **U4 ★** | **Target reshaped to its new disk, automatically.** Moved partitions, grown filesystems, extended LVM, identity preserved — done during the migration | MGN enlarges the *raw volume* but you grow the filesystem and fix the layout by hand afterward; Nutanix/HCX/Move clone at source size. None reshape the layout | BootShift planner + grow adapters |
 | U5 | **Any to any, no kernel module, Secure Boot OK.** One static binary; eBPF CO-RE, so no per-kernel build; LVM/dm built in. Works between KVM, VMware, Hyper-V, any cloud and bare metal | MGN (headers, no Secure Boot); Move/HCX (one hypervisor) | In-guest agent; target boots our receiver image |
-| U6 | **Safe-by-default cutover with one-step rollback.** Quiesce and drain are guaranteed. The source is never written. We refuse writers we can't see. A fencing epoch prevents two live copies | MGN doesn't stop the source | Cutover state machine (§A7) |
+| **U6 ★** | **Untouched source, one-step rollback.** The source's data disks are read **read-only**; the source is never written (no agent, no snapshot). Cutover is verified-first and fails closed. Rollback is leaving the source running | Agent tools install software in the guest; **agentless tools snapshot the source datastore each cycle (delta writes + consolidation + stun).** None read-only | Read-only source + verified-first cutover (§A7) |
 | U7 | **Rehearse on real data while replication continues**, including an OS-upgrade dry run, and measure the cutover | Only MGN tests, and only in AWS | Writable dm-snapshot of the replica exported to a throwaway VM |
 | U8 | **Guest changes you can see and undo.** Every change for new hardware is recorded in an undo log and shown as a diff | All vendors make undocumented edits | BootShift `guard` / `undo_log` |
 | U9 | **Database-aware.** Detect database engines; run app freeze hooks; recommend logical replication when it fits better | — | Preflight + hooks |
@@ -142,7 +147,7 @@ These sit alongside the BootShift invariants in `CLAUDE.md`. Code that breaks on
   "Clean" is never inferred without either an unbroken tracker or a hash comparison.
 - **M5. Start tracking before reading.** The tracker is live and confirmed before the first chunk of any pass is read. Overlapping windows are mandatory, after QEMU LP#2156307.
 - **M6. The final pass runs only on a quiesced, drained source.** All filesystems are frozen, swap is off, and no write was seen after the freeze took effect. A write seen after the freeze aborts the cutover and thaws the source.
-- **M7. One live copy.** A fencing epoch is written to both journals. The target boots only after its own journal records `Committed`. It records that only once the source is frozen and the final pass is acknowledged. The source thaws only through an explicit rollback, which the target journal must record as `RolledBack` first. After that, the target never boots for that epoch.
+- **M7. One live copy, fail-closed.** A fencing epoch is in both journals. **The target boots only with *both* its own durable `Committed` *and* the source's `SourceSurrendered(epoch)` token**, emitted after the source freezes and powers off or is fenced; `Committed` alone never boots, for that epoch, for ever. The source never thaws itself into a live state after it has surrendered; *before* surrender its watchdog may thaw it back to serving, which is safe because the target cannot have booted without the token. Rollback is explicit and records `RolledBack` before the source resumes, but it is a convenience, not the safety mechanism. A link partition during the final pass therefore cannot produce two live copies (the earlier "boots on `Committed`" wording could).
 - **M8. The target boots only after the final verify passes and the receipt is durable.** All guest changes go through the undo log.
 - **M9. Preserve identity:** disk GUID, PARTUUIDs, filesystem UUIDs, LVM UUIDs. Exceptions are changes the user chose (new partition sizes), and each is recorded in the receipt.
 - **M10. No post-copy in any default mode.** Booting before the copy is complete gives up failure atomicity. It may only ever be added as a separately named opt-in mode with its own invariants.
@@ -155,14 +160,25 @@ These sit alongside the BootShift invariants in `CLAUDE.md`. Code that breaks on
 - [ ] **MD1. Where the code lives:** `migrate/crates/*` as members of the root workspace (proposed), or a separate repository.
 - [ ] **MD2. Writing eBPF in Rust:** use `aya-ebpf` for the BPF program (proposed). The BPF crate needs `unsafe` and a nightly build via `cargo xtask`, which is an exception to "only `disk` may use unsafe". The alternative is C with libbpf, which needs clang.
 - [ ] **MD3. First sources:** Linux guests (ext4, XFS, Btrfs, LVM). Windows guests (VSS freeze plus a minifilter-free tracker) come later.
-- [ ] **MD4. Default cutover:** "fast" (seconds; full source re-read in the background after go-live) or "verified-first" (full compare before the target boots; minutes). Proposed: fast, because U1's background verify keeps the source intact until the user signs off.
+- [x] **MD4. Default cutover: verified-first.** The final compare pass proves the target *before* it boots, so we never serve unverified data — this is the only choice consistent with BootShift's one rule (never lose or corrupt data). In v1 (Compare mode) the final pass *is* the proof, so verified-first costs no extra work. "Fast" (prove in the background after go-live) is an explicit opt-in for low-churn, low-risk jobs. (Reversed from the earlier "fast" proposal: defaulting to detect-after-the-fact can serve corrupted data in the window between cutover and the background verify, which contradicts the one rule.)
 - [ ] **MD5. Default transport:** TLS 1.3 over TCP with a 6-word pairing code (proposed). Alternative: SSH tunnel.
 
 ---
 
 ## 5. Work plan (in order)
 
-Each task has a **Done when** line. Phase 0 must finish before anything is built on its assumptions.
+Each task has a **Done when** line.
+
+### Build order — foundation first, then accelerators
+
+We build the whole system. The order is about safety, not scope: each stage is correct on its own, and every later stage only makes the **same** migration faster, never less safe (§I12).
+
+1. **Foundation — Compare mode (Phases 1–5, 6.2, 7, 8, 11, 12).** A correct, verified-first, agentless migration that reshapes onto the new disk and signs a receipt: the three starred USPs, with no tracker to break and the source read-only. Everything after is an accelerator on this base. Depends only on spikes 0.4, 0.5, 0.8.
+2. **Track mode (0.1–0.3, 6.1).** Cuts a low-churn migration from minutes to seconds of data downtime.
+3. **Mirror mode (0.6, 9).** Sub-second convergence for high-churn LVM machines — the one mode that writes the source (the M1 exception, with explicit consent).
+4. **Rehearsal (0.7, 10) and throttle (6.4).**
+
+A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't be met on a given host, that host simply runs the stage below it — the foundation always works. Build the test infrastructure (Phase 2) before the feature it tests, per `CLAUDE.md`.
 
 ### Phase 0 — De-risk spikes
 

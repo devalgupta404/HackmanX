@@ -2,6 +2,8 @@
 
 A handoff note for a new working session. It describes the idea, the market it enters and why BootShift's pipeline gives it an edge. It is not an implementation plan.
 
+> **Canonical design is `migrate/plan.md` + `architecture.md` + `implementation.md`; this note is superseded by them.** Competitive claims below were re-verified against vendor docs in October 2026 and corrected: the three differentiators that actually hold are **reshape**, **signed proof**, and a **read-only (never-written) source**. "Nothing installed on the old machine" was an overclaim — v1 runs a root binary to *read* the source; it is agentless in the sense of *no kernel module and no writes to the source*, not *no software run*.
+
 ## The problem
 
 An organisation has a machine that will get no more updates: the OS version or the hardware has reached end of life. Everything on it, the operating system, apps and data, has to move to a new machine. The old machine is still in use and keeps writing data, so it can't simply be switched off for hours while a copy runs.
@@ -53,15 +55,15 @@ Offer the same four steps, for **any machine to any machine**: bare metal, any V
 
 ## Why it can beat them (the USP)
 
-1. **Nothing installed on the old machine.** No kernel driver, no packages. It suits machines that are frozen or out of support, which is exactly when people migrate.
+1. **No kernel module, and the source is read-only.** The agent is a single static binary that *reads* the source: no kernel driver, no packages, and it never writes the source's data. (Competitors install an in-guest agent, or snapshot the source datastore each cycle.) This suits machines that are frozen or out of support, which is exactly when people migrate. ("Nothing installed" was an overclaim; the honest version is *no kernel module, source never written*.)
 2. **Survives a power cut or network drop.** BootShift's journal already resumes from the last finished piece, and its crash tests cover every write. Competitors resync or start over.
-3. **Proof, not a promise.** Every piece is read back and checked, and a chain of hashes produces a receipt showing that the new machine matches the old one at switchover. Useful for audits and compliance.
+3. **Proof, not a promise.** Every piece is read back and checked, and a chain of hashes produces a signed receipt showing that the new machine matches the old one at switchover. **No migration product ships a receipt anyone can re-verify:** Azure checksums internally and keeps nothing, and everywhere else integrity validation is a manual step. Useful for audits and compliance.
 4. **Rehearsal anywhere.** AWS only lets you test inside AWS, and Move has no rehearsal at all. We rehearse on the target machine itself, and can include the OS upgrade.
-5. **The new disk doesn't have to match.** BootShift's planner already resizes and rearranges partitions, so a different size or layout is fine. Disk and partition IDs stay the same, so the system still boots.
+5. **The new disk doesn't have to match, and we reshape it automatically.** BootShift's planner resizes and rearranges partitions and grows filesystems as part of the migration, so a different size or layout is fine. Competitors clone at the source size, or (MGN) hand you a bigger raw volume you must grow by hand; none reshape the layout. Disk and partition IDs stay the same, so the system still boots.
 6. **Seconds of downtime, and an easy undo.** The old machine is never modified after the switchover pause, so going back is just turning it on again.
 7. **No lock-in.** Open source, and any target works.
 
-**Pitch:** *The convenience of AWS MGN, for any machine to any machine. Nothing installed on the old machine, a copy that survives power cuts, seconds of downtime, and signed proof that nothing was lost.*
+**Pitch:** *Migrate any Linux machine onto any new disk — automatically reshaped and grown to fit — with a signed receipt proving it is byte-for-byte identical, and the source never written, so rollback is one power button. No kernel module; survives power cuts.*
 
 ## What BootShift already brings
 

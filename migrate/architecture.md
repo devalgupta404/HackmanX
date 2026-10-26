@@ -157,7 +157,7 @@ A program that read the old generation either finished before the flip or sees t
 **Health counters (M4).** Any of these means **tracking broke**: the whole disk is marked dirty and the next pass becomes a compare pass.
 - `events_seen`, `ranges_marked`.
 - `foreign_writes`: writes to the tracked disk from passthrough paths, seen through the `nvme:nvme_setup_cmd` and `scsi:scsi_dispatch_cmd_start` write opcodes.
-- `heartbeat`: the sender issues one known 4 KiB `O_DIRECT` write to a dedicated sentinel file each pass and checks it shows up.
+- `heartbeat`: the sender issues one known 4 KiB `O_DIRECT` write to a **reserved sentinel sector on the tracked disk** — a raw block write, not a file, because the filesystem is frozen during the final drain check — each pass and checks it shows up.
 - Program detach, map-update errors, or an agent restart.
 
 **Ordering with reads (M5).** At the start of every pass:
@@ -260,9 +260,11 @@ Both sides journal their state durably before acting on it. The **epoch** is a r
    - For untouched chunks it uses the receiver's index entries, whose correctness was established by earlier acknowledged, read-back-verified passes plus continuous tracking. U1's background verify checks this assumption later.
 5. **Receiver Final:** compare roots. On mismatch, go back to a compare pass while still frozen, or roll back.
 6. **Commit:**
-   1. The receiver writes the receipt, then journals `Committed(epoch)` and flushes.
-   2. Then the sender journals `Committed(epoch)` to its own small state file on tmpfs plus the receiver's acknowledgement. Its disks are frozen; that is why the receiver's record is authoritative.
-   3. The source stays frozen and is then powered off (or left frozen for a fast rollback window, set by the user).
+   1. The receiver writes the receipt, journals `Committed(epoch)` and flushes. It does **not** boot yet (A7.4).
+   2. The source, still frozen, journals `Committed(epoch)` to its own small tmpfs state plus the receiver's acknowledgement, then **powers off or is fenced**, emitting `SourceSurrendered(epoch)` to the receiver as the last thing it does. Its disks are frozen throughout, which is why the receiver's record is authoritative.
+   3. Only on receiving `SourceSurrendered` does the receiver move to Finalizing (A8). A committed target that never saw the token stays down for that epoch for ever.
+
+   *Optional fast-rollback window:* the user may keep the source frozen-but-powered instead of off; then `SourceSurrendered` is withheld until the window closes and the target waits. The target still never boots without the token.
 7. **Finalize and boot (target):** A8.
 8. **Network identity:** move the service IP:
    - same L2: gratuitous ARP;
@@ -280,11 +282,15 @@ Rollback is allowed until the target journals `Booted`, and afterwards only with
 2. Only then does the source thaw: in mirror mode it detaches the remote leg first with `lvconvert -m0` on the source's own PV.
 3. The source keeps running exactly as before. It was never written (M1).
 
-### A7.4 Why there can't be two live copies
+### A7.4 Why there can't be two live copies (fail-closed fence)
 
-- The target boots only from `Committed`. `Committed` is written only after the source is frozen and its final pass is acknowledged.
-- The source thaws only from `Rollback`, which needs the target's `RolledBack`.
-- A crash of either side at any point resumes into one of these states. The exhaustive test in `plan.md` 3.5 checks every combination.
+The fence is **cooperative software, not fencing hardware or a quorum**, so it is designed to fail *closed on the target* and *alive on the source*. The target staying down is always safe (the source is intact and unmodified); two live copies never is. A network partition plus a human must not be able to produce split brain — the earlier "target boots on `Committed`, source thaws on `Rollback`" wording allowed exactly that if the final-pass link dropped while the watchdog fired.
+
+- **The target boots only with *two* durable facts: its own `Committed` *and* a positive source-down token** — the source's `SourceSurrendered(epoch)` record, emitted only after the source has frozen, and powered off or been fenced. A `Committed` alone is **not** enough. Without the token the target refuses to boot for that epoch, for ever.
+- **The source never thaws itself into a live state during cutover.** Its watchdog (I5.4) thaws only to **keep the source serving** when the cutover is abandoned, and only *before* it has emitted `SourceSurrendered`. Before surrender the source may always abort and keep running, because the target cannot have booted (no token). After surrender it powers off and does not return for that epoch.
+- **Link drop during the final pass** (the old hole): the source has not surrendered, so its watchdog thaws it and it keeps running; the target never receives the token, so it never boots. No split brain and no coordination across the dead link.
+- **Rollback** (A7.3) is the explicit operator path and still records the target's `RolledBack` before the source resumes — but it is now a *convenience*, not a safety dependency, because the automatic path already fails closed.
+- A crash of either side resumes into one of these states. The exhaustive test in `plan.md` 3.5 checks every crash × message-loss combination for two invariants: never two writable copies, and always a safe way forward or back.
 
 ---
 
@@ -355,7 +361,7 @@ All equal: the receipt is marked `Verified` and the user can retire the source. 
 | Tracker loses an event / detaches / passthrough write | Any pass | Tracking broke: whole disk dirty, compare pass (M4) |
 | Writer not stopped by freeze | Quiescing | Second drain not empty: abort, thaw, report the writer (M6) |
 | Freeze hangs | Quiescing | Watchdog thaws; cutover aborted; source keeps running |
-| Link drops | Final pass | Source stays frozen up to the watchdog limit; on reconnect, finish; on timeout, rollback |
+| Link drops | Final pass | Source has not surrendered: the watchdog thaws it and it keeps serving; the target never receives `SourceSurrendered`, so it never boots (A7.4). Retry later. No cross-partition coordination is needed |
 | Receiver crashes | After `Committed` | Resumes at Finalizing (idempotent steps); source stays frozen/off |
 | Target fails to boot | Booted health check | Undo the guest changes and retry; or rollback (target never served, so no data to lose) |
 | Mirror leg drops | Mirror mode, before cutover | Source continues on its own leg; region resync on reconnect |
