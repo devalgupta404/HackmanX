@@ -368,9 +368,18 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - Never mount the ESP or a partition that is being moved.
 - [ ] **10.3** Recovery text screen: current step, progress bar, time left, and "If the power goes out, just turn the computer back on."
   - On a fatal error: explain it, keep the redirect in place, and power off.
-- [ ] **10.4** `boot::esp`: preallocate the journal file and capture its extents with FIEMAP. Copy the kernel and initramfs.
-- [ ] **10.5** `boot::redirect`, for GRUB: swap `EFI/<vendor>/grub.cfg` atomically (temp file, fsync, rename, fsync directory). For systemd-boot: add a `bootshift.conf` entry and set it as the default in `loader.conf`. Keep the originals.
-- [ ] **10.6** `boot::efi`, through `efibootmgr`: put the distro entry first and remove Windows Boot Manager from BootOrder. Save the original order in the journal.
+- [~] **10.4** (journal file done; copying kernel and initramfs pending) `boot::journal_file`.
+  - `create` writes the journal file and fsyncs it and its directory.
+  - `extents` locates it with `filefrag -v -b512` (FIEMAP), refusing extents flagged delalloc, unknown, inline, encoded or not_aligned, and turning them into whole-disk offsets.
+  - `boot::cmdline::RecoveryArgs` hands recovery the disk GUID and the journal's pieces on the kernel command line: `bootshift.disk=… bootshift.journal=<offset>+<len>,…`.
+- [~] **10.5** (GRUB done; systemd-boot pending) `boot::grub`.
+  - `recovery_config` boots `EFI/bootshift/vmlinuz` and `initrd.img` with no menu.
+  - `install_redirect` saves the original once, then atomically replaces `EFI/<vendor>/grub.cfg` (temp file, fsync, rename, fsync directory). `remove_redirect` puts it back. Both are safe to repeat.
+  - systemd-boot (a loader entry plus the default in `loader.conf`) is still to do.
+- [x] **10.6** `boot::efi`: parses `efibootmgr`.
+  - `recovery_order` puts BootCurrent (the running distro) first and drops Windows Boot Manager from the order; the entry itself is kept.
+  - `set_order` uses `efibootmgr --bootorder`.
+  - Saving the original order in the plan record comes with the prepare step.
 - [ ] **10.7** Done step: mount the ESP, restore the bootloader config and BootOrder, delete temp files, unmount, reboot. Every action is idempotent.
 - [ ] **10.8** Escape hatch: `bootshift resume --journal …` works from any live USB with the same binary.
 

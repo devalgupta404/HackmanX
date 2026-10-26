@@ -10,6 +10,12 @@ repository.workspace = true
 
 [dependencies]
 bootshift-core.workspace = true
+bootshift-disk.workspace = true
+bootshift-fs.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
