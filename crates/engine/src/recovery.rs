@@ -31,6 +31,12 @@ pub enum RecoveryError {
     Exec(#[from] ExecError),
     #[error(transparent)]
     Tool(#[from] RunError),
+    #[error(transparent)]
+    Table(#[from] bootshift_disk::GptError),
+    #[error(
+        "the partition table changed after the plan was made, so nothing was touched and normal booting is restored; plan again"
+    )]
+    LayoutChanged,
 }
 
 /// Whether `device` holds the GPT with this disk GUID.
@@ -51,6 +57,12 @@ pub fn run(
     let opened = Journal::open(&disk, JournalFile::new(args.journal.clone())?)?;
     let run = RunPlan::from_record(&opened.plan)?;
     let mut journal = opened.journal;
+
+    if opened.progress.is_none() && !table_matches(&disk, &run)? {
+        restore_booting(runner, disk_path, &run.boot, &work_dir.join("esp"))?;
+        journal.commit(&mut disk, &done())?;
+        return Err(RecoveryError::LayoutChanged);
+    }
 
     let mut filesystems = SystemFilesystems::new(
         runner,
@@ -77,6 +89,27 @@ pub fn run(
         journal.commit(&mut disk, &done())?;
     }
     Ok(())
+}
+
+/// Whether the disk's table still describes exactly the layout the plan starts from.
+pub fn table_matches<D: BlockDevice + ?Sized>(
+    disk: &D,
+    run: &RunPlan,
+) -> Result<bool, RecoveryError> {
+    let mut on_disk: Vec<_> = GptImage::read(disk)?
+        .entries()?
+        .into_iter()
+        .map(|e| (e.number, e.unique_guid, e.type_guid, e.extent))
+        .collect();
+    let mut planned: Vec<_> = run
+        .layout
+        .partitions
+        .iter()
+        .map(|p| (p.number, p.unique_guid, p.type_guid, p.extent))
+        .collect();
+    on_disk.sort_by_key(|entry| entry.0);
+    planned.sort_by_key(|entry| entry.0);
+    Ok(on_disk == planned)
 }
 
 /// Puts the original boot order and GRUB config back. Safe to repeat.
@@ -132,6 +165,69 @@ mod tests {
             &MemDisk::zeroed(1 << 20, 512).unwrap(),
             Guid([0xAB; 16])
         ));
+    }
+
+    fn run_for(disk: &MemDisk) -> RunPlan {
+        use bootshift_core::layout::{Content, Geometry, Layout, Partition};
+        use bootshift_core::plan::Plan;
+        let table = GptImage::read(disk).unwrap();
+        let partitions = table
+            .entries()
+            .unwrap()
+            .into_iter()
+            .map(|e| Partition {
+                number: e.number,
+                unique_guid: e.unique_guid,
+                type_guid: e.type_guid,
+                name: e.name,
+                attributes: e.attributes,
+                extent: e.extent,
+                content: Content::Opaque,
+                used: e.extent.len,
+                min_len: None,
+            })
+            .collect();
+        RunPlan {
+            layout: Layout {
+                geometry: Geometry {
+                    sector_size: 512,
+                    usable: table.usable(),
+                    alignment: bootshift_core::units::Sectors(8),
+                },
+                partitions,
+            },
+            plan: Plan::default(),
+            swaps: Default::default(),
+            boot: BootRestore {
+                esp_partition: 1,
+                grub_vendor: "ubuntu".to_string(),
+                original_boot_order: Vec::new(),
+            },
+        }
+    }
+
+    fn disk_with_partition(start: u64) -> MemDisk {
+        let mut cursor = Cursor::new(vec![0; 1 << 20]);
+        let mut gpt = GPT::new_from(&mut cursor, 512, [0xAB; 16]).unwrap();
+        gpt[1] = gptman::GPTPartitionEntry {
+            partition_type_guid: [0xAF; 16],
+            unique_partition_guid: [1; 16],
+            starting_lba: start,
+            ending_lba: start + 99,
+            attribute_bits: 0,
+            partition_name: "data".into(),
+        };
+        gpt.write_into(&mut cursor).unwrap();
+        MemDisk::from_bytes(cursor.into_inner(), 512).unwrap()
+    }
+
+    #[test]
+    fn a_table_changed_after_planning_is_noticed() {
+        let planned = disk_with_partition(100);
+        let run = run_for(&planned);
+
+        assert!(table_matches(&planned, &run).unwrap());
+        assert!(!table_matches(&disk_with_partition(200), &run).unwrap());
     }
 
     #[test]
