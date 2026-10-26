@@ -460,6 +460,11 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 - [~] **13.3** (frontend done) Backup confirmation checkbox. Apply is enabled only when the plan has steps, nothing is unavailable, the checks passed and the box is ticked. The table-backup download is still to do.
 - [ ] **13.4** Apply → restart; post-restart summary, including the `reagentc` step when the recovery partition moved and the one-time chkdsk note for NTFS.
   - The restart and summary screens exist in the frontend (demo simulation); what's missing is the real wiring: reading the finished journal for the summary, and the reagentc/chkdsk notes driven by the actual plan (issue I-14).
+- [~] **13.6** (built; not yet run against a live `bootshiftd`) Native Rust desktop app in `crates/gui` (`bootshift-gui`, egui), rebuilt from `UI-HANDOFF.md` so the GUI ships without webkit2gtk.
+  - All five screens, the disk bar with edge handles, grips, slivers and capsules, the dimension gutter, the partition table, refusals, the recovery console with the demo power cut, and the responsive layouts at 1180px and 820px.
+  - Talks to `org.bootshift.Helper1` over the system D-Bus (zbus); falls back to the demo disk, labelled as such in the rail, when the helper isn't there or with `--demo`.
+  - Reads and writes `core`'s own types, and shares the CLI's plan wording through `Operation::describe`.
+  - Tests: the clamping rules with a proptest that every edit sequence passes `core::validate`; end-to-end UI tests (egui_kittest) that drag, click and type through the whole flow, keyboard editing, tab order and every width.
 - [ ] **13.5** Tauri 2 shell (`gui/src-tauri`): commands `list_disks`, `probe`, `plan`, `check` and `apply` forward to `org.bootshift.Helper1` over the system D-Bus (a zbus proxy). Needs `libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev` to build.
 
 ### Phase 14 — Docs and packaging

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::layout::{Guid, Layout, Partition};
-use crate::units::{Lba, Sectors};
+use crate::units::{Lba, Sectors, format_bytes};
 
 /// One step of a plan. Each operation ends with the partition table describing its result.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +33,34 @@ impl Operation {
             | Operation::Grow { partition, .. }
             | Operation::RemoveSwap { partition } => *partition,
             Operation::RecreateSwap { partition } => partition.unique_guid,
+        }
+    }
+
+    /// The step in plain words, as the CLI prints it and the GUI lists it.
+    pub fn describe(&self, layout: &Layout) -> String {
+        let sector = layout.geometry.sector_size;
+        let size = |sectors: Sectors| format_bytes(sectors.to_bytes(sector));
+        let at = |lba: Lba| size(Sectors(lba.0));
+        let name = match self {
+            Operation::RecreateSwap { partition } => partition.label(),
+            _ => layout
+                .partition(self.partition())
+                .map_or_else(|| self.partition().to_string(), Partition::label),
+        };
+        match self {
+            Operation::Shrink { len, .. } => format!("Shrink {name} to {}", size(*len)),
+            Operation::Move {
+                to, copy_estimate, ..
+            } => format!(
+                "Move {name} to {} (copies about {})",
+                at(*to),
+                size(*copy_estimate)
+            ),
+            Operation::Grow { len, .. } => format!("Grow {name} to {}", size(*len)),
+            Operation::RemoveSwap { .. } => format!("Set aside swap {name}"),
+            Operation::RecreateSwap { partition } => {
+                format!("Recreate swap {name} at {}", at(partition.extent.start))
+            }
         }
     }
 }
@@ -117,5 +145,68 @@ fn ensure(condition: bool, guid: Guid) -> Result<(), ApplyError> {
         Ok(())
     } else {
         Err(ApplyError::Mismatch(guid))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::Content;
+    use crate::test_support::{at, guid, layout, mib, partition};
+
+    fn named_layout() -> Layout {
+        let mut windows = partition(3, Content::Ntfs, 1, 1024);
+        windows.name = "Windows".to_string();
+        layout(4096, vec![windows, partition(6, Content::Swap, 2048, 512)])
+    }
+
+    #[test]
+    fn steps_name_a_labelled_partition_by_its_label() {
+        let layout = named_layout();
+        let shrink = Operation::Shrink {
+            partition: guid(3),
+            len: mib(512),
+        };
+        assert_eq!(
+            shrink.describe(&layout),
+            "Shrink partition 3 \"Windows\" to 512.0 MiB"
+        );
+    }
+
+    #[test]
+    fn steps_name_an_unlabelled_partition_by_its_contents() {
+        let layout = named_layout();
+        assert_eq!(
+            Operation::RemoveSwap { partition: guid(6) }.describe(&layout),
+            "Set aside swap partition 6 (swap)"
+        );
+    }
+
+    #[test]
+    fn a_move_says_where_it_lands_and_how_much_it_copies() {
+        let layout = named_layout();
+        let step = Operation::Move {
+            partition: guid(3),
+            from: at(1),
+            to: at(1536),
+            len: mib(1024),
+            copy_estimate: mib(500),
+        };
+        assert_eq!(
+            step.describe(&layout),
+            "Move partition 3 \"Windows\" to 1.5 GiB (copies about 500.0 MiB)"
+        );
+    }
+
+    #[test]
+    fn a_recreated_swap_is_named_even_after_it_left_the_table() {
+        let mut layout = named_layout();
+        let swap = layout.partitions.remove(1);
+        let mut moved = swap.clone();
+        moved.extent.start = at(3072);
+        assert_eq!(
+            Operation::RecreateSwap { partition: moved }.describe(&layout),
+            "Recreate swap partition 6 (swap) at 3.0 GiB"
+        );
     }
 }

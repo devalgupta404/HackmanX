@@ -63,7 +63,8 @@ crates/
   engine/   Preflight, copier, executor (the 8 steps), verify. Talks only to traits from disk/fs/boot.
   cli/      `bootshift` binary: probe, plan, check, apply, recover, resume. Built static for musl.
   helper/   `bootshiftd` D-Bus service with polkit.
-gui/        Tauri 2 app (Rust backend + web frontend). Never touches disks; only talks to bootshiftd.
+  gui/      `bootshift-gui` desktop app (egui), built from UI-HANDOFF.md. Never touches disks; only talks to bootshiftd.
+gui/        The TypeScript reference frontend the Rust app was built from. Never touches disks.
 xtask/      Dev tasks: fixtures, VM tests, crash suites, initramfs builds.
 packaging/  D-Bus policy, systemd unit, polkit policy.
 task.md     Ordered work plan and research findings.
@@ -81,7 +82,7 @@ issues.md   Known defects and gaps, each naming the task that closes it. Remove 
 - A new module gets its own file once it is more than a few items. Use `foo.rs` + `foo/` for submodules, not `foo/mod.rs`.
 - Shared dependency versions live in the root `[workspace.dependencies]`. Crates use `name.workspace = true`, never their own version.
 
-**Dependency direction:** `core` ← `disk`, `fs` ← `boot` ← `engine` ← `cli`, `helper`. `core` depends on nothing in the workspace. Nothing depends on `gui`.
+**Dependency direction:** `core` ← `disk`, `fs` ← `boot` ← `engine` ← `cli`, `helper`. `core` ← `gui` (the desktop app reads `core`'s types and nothing else). `core` depends on nothing in the workspace. Nothing depends on `gui`.
 
 ## Commands
 
@@ -94,6 +95,8 @@ cargo xtask vm-test                          # privileged tests inside the guest
 cargo xtask boot-proof                       # end to end: apply, restart, power cut mid-move, resume
 cargo +nightly fuzz run journal_decode       # in crates/core
 cargo build -p bootshift-cli --release --target x86_64-unknown-linux-musl
+cargo run -p bootshift-gui -- --demo         # the desktop app on the made-up demo disk
+BOOTSHIFT_SNAPSHOTS=xtask/out cargo test -p bootshift-gui ui_tests   # also save each screen as a PNG
 cargo deny check                             # licences + advisories
 ```
 
