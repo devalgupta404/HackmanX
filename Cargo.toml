@@ -12,6 +12,7 @@ publish = false
 
 [workspace.dependencies]
 thiserror = "2.0"
+proptest = "1.5"
 
 bootshift-core = { path = "crates/core" }
 bootshift-disk = { path = "crates/disk" }
