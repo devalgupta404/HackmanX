@@ -1,1 +1,137 @@
-fn main() {}
+//! `bootshiftd`: the root service the GUI talks to over the system D-Bus. It re-plans and
+//! re-checks everything it is asked to do, and never trusts a plan from the caller.
+
+mod authority;
+mod responses;
+
+use std::path::{Path, PathBuf};
+
+use bootshift_engine::service::{self, ServiceError, SystemPaths};
+use bootshift_fs::run::SystemRunner;
+use zbus::fdo;
+use zbus::message::Header;
+
+const BUS_NAME: &str = "org.bootshift.Helper1";
+const OBJECT_PATH: &str = "/org/bootshift/Helper1";
+/// The static `bootshift` binary that becomes the recovery system's init.
+const RECOVERY_BINARY: &str = "/usr/libexec/bootshift/bootshift";
+
+struct Helper {
+    recovery_binary: PathBuf,
+}
+
+#[zbus::interface(name = "org.bootshift.Helper1")]
+impl Helper {
+    fn version(&self) -> String {
+        env!("CARGO_PKG_VERSION").to_string()
+    }
+
+    async fn probe(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        disk: String,
+    ) -> fdo::Result<String> {
+        authority::require(connection, &header, authority::INSPECT).await?;
+        run_blocking(move || responses::reply(probe(&disk))).await
+    }
+
+    async fn plan(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        disk: String,
+        target: String,
+    ) -> fdo::Result<String> {
+        authority::require(connection, &header, authority::INSPECT).await?;
+        run_blocking(move || responses::reply(plan(&disk, &target))).await
+    }
+
+    async fn check(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        disk: String,
+        target: String,
+    ) -> fdo::Result<String> {
+        authority::require(connection, &header, authority::INSPECT).await?;
+        run_blocking(move || responses::reply(check(&disk, &target))).await
+    }
+
+    async fn apply(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        disk: String,
+        target: String,
+    ) -> fdo::Result<String> {
+        authority::require(connection, &header, authority::APPLY).await?;
+        let recovery_binary = self.recovery_binary.clone();
+        run_blocking(move || responses::reply(apply(&disk, &target, &recovery_binary))).await
+    }
+}
+
+fn probe(disk: &str) -> Result<responses::Probed, ServiceError> {
+    let inspected = service::inspect(&SystemRunner, Path::new(disk))?;
+    Ok(responses::probed(&inspected))
+}
+
+fn plan(disk: &str, target: &str) -> Result<responses::Planned, ServiceError> {
+    let inspected = service::inspect(&SystemRunner, Path::new(disk))?;
+    responses::planned(&inspected.layout, &responses::parse_target(target)?)
+}
+
+fn check(disk: &str, target: &str) -> Result<(), ServiceError> {
+    let inspected = service::inspect(&SystemRunner, Path::new(disk))?;
+    let plan = service::plan_target(&inspected.layout, &responses::parse_target(target)?)?;
+    let (_, refusals) =
+        service::run_checks(&SystemRunner, &SystemPaths::default(), &inspected, &plan);
+    if refusals.is_empty() {
+        Ok(())
+    } else {
+        Err(ServiceError::Refused(refusals))
+    }
+}
+
+fn apply(
+    disk: &str,
+    target: &str,
+    recovery_binary: &Path,
+) -> Result<responses::Applied, ServiceError> {
+    let inspected = service::inspect(&SystemRunner, Path::new(disk))?;
+    let plan = service::plan_target(&inspected.layout, &responses::parse_target(target)?)?;
+    let work_dir = std::env::temp_dir().join("bootshiftd");
+    let _ = std::fs::create_dir_all(&work_dir);
+    let result = service::apply(
+        &SystemRunner,
+        &SystemPaths::default(),
+        &inspected,
+        &plan,
+        recovery_binary,
+        &work_dir,
+    );
+    let _ = std::fs::remove_dir_all(&work_dir);
+    result.map(|_| responses::Applied {
+        restart_to_begin: true,
+    })
+}
+
+/// Runs slow work (tools, disk reads) off the D-Bus executor, so other calls keep flowing.
+async fn run_blocking(
+    work: impl FnOnce() -> Result<String, String> + Send + 'static,
+) -> fdo::Result<String> {
+    blocking::unblock(work).await.map_err(fdo::Error::Failed)
+}
+
+fn main() -> anyhow::Result<()> {
+    let helper = Helper {
+        recovery_binary: PathBuf::from(RECOVERY_BINARY),
+    };
+    let _connection = zbus::blocking::connection::Builder::system()?
+        .name(BUS_NAME)?
+        .serve_at(OBJECT_PATH, helper)?
+        .build()?;
+    loop {
+        std::thread::park();
+    }
+}

@@ -1,0 +1,6 @@
+# Installed to /usr/share/dbus-1/system-services/. Starts the helper the first time it is called.
+[D-BUS Service]
+Name=org.bootshift.Helper1
+Exec=/usr/libexec/bootshift/bootshiftd
+User=root
+SystemdService=bootshiftd.service

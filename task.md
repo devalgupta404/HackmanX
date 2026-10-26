@@ -421,11 +421,19 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 12 — Privileged helper
 
-- [ ] **12.1** `bootshiftd`: a zbus service, `org.bootshift.Helper1`, started by D-Bus activation.
-  - Methods: `Probe`, `Plan`, `Check`, `Apply(plan)`, `Status`.
-  - Polkit check (`zbus_polkit`) at the start of every mutating method, using `auth_admin` (not `_keep`).
-- [ ] **12.2** The helper re-validates every plan itself; it never trusts the GUI's plan blindly.
-- [ ] **12.3** Packaging files: D-Bus system policy, systemd unit, polkit `.policy`.
+- [x] **12.1** `bootshiftd`: serves `org.bootshift.Helper1` at `/org/bootshift/Helper1` on the system bus (zbus).
+  - Methods: `Version`, `Probe(disk)`, `Plan(disk, target)`, `Check(disk, target)`, `Apply(disk, target)`.
+  - Replies are JSON: `{"result":"ok","value":…}` or `{"result":"refused","refusals":[{reason, fix}]}`. Other failures are D-Bus errors.
+  - Every method asks polkit (`zbus_polkit`) first: `org.bootshift.inspect`, and `org.bootshift.apply`, which is always `auth_admin` (never `_keep`).
+  - Slow work runs off the D-Bus executor with `blocking::unblock`.
+  - Smoke-tested on a private bus: the name is owned, `Version` answers, and introspection shows all five methods.
+- [x] **12.2** The helper never trusts a plan from the GUI. It receives only a target, re-inspects the disk, re-plans, and `service::apply` runs every check again.
+- [x] **12.3** Packaging files in `packaging/`:
+  - D-Bus system policy: root owns the name, anyone may call.
+  - D-Bus activation file pointing at `bootshiftd.service`.
+  - systemd unit (`Type=dbus`).
+  - polkit policy: inspect is allowed for the active user; apply always asks for the admin password.
+  - The XML is checked with `xmllint`.
 
 ### Phase 13 — GUI (Tauri 2)
 

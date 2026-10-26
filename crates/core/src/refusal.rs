@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// Why BootShift won't do something, and what the user can do about it.
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("{reason}")]
 pub struct Refusal {
     pub reason: String,
