@@ -245,17 +245,22 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 5 — Copier (the heart)
 
-- [ ] **5.1** `engine::copier::move_range`.
-  - Direction rule, and `chunk = min(64 MiB, distance)` aligned to the physical block size.
-  - Strict per-chunk order (1.1 item 1), read-back verify, hash chain.
-  - Resumes from `next_chunk`. Copies the full range unless given used ranges.
-- [ ] **5.2** Read-ahead of the next chunk, overlapped with the current write (safe by the direction rule), in a small separately tested function.
-- [ ] **5.3** Exhaustive crash tests on CrashDisk.
-  - Small moves left and right, with distance < chunk, = chunk and ≫ chunk.
-  - Crash at **every** recorded point, with every drop, reorder and tear option, then resume.
-  - Done when: the final bytes match the expected layout at 100% of crash points.
-- [ ] **5.4** Read errors: on EIO, stop, keep the journal, and report the exact LBA. Continue past it only with an explicit `--accept-unreadable` choice. Test with a `FaultyDisk` wrapper (unit) and dm-dust (VM).
-- [ ] **5.5** Used-range copy: input is a sorted list of ranges, and the first and last MiB are always copied. Tests compare it against the full copy for random bitmaps.
+- [x] **5.1** `engine::copier`.
+  - `ChunkPlan` (pure): `chunk = min(64 MiB, distance)` rounded to the logical block, the direction rule, and the used pieces of each chunk.
+  - `ChunkCopier`, per chunk: read → write → flush → read back and compare → extend the hash chain. It refuses the next chunk until the last one is acknowledged as committed.
+  - `move_range` commits each chunk to the journal. `verify_move` recomputes the chain over the destination.
+  - The copier doesn't own the journal, so the executor can commit to a journal on a different disk from the data.
+- [ ] **5.2** Read-ahead of the next chunk, overlapped with the current write (safe by the direction rule), in a small separately tested function. A performance task; correctness doesn't depend on it.
+- [x] **5.3** Exhaustive crash tests (`crates/engine/tests/copier_crash.rs`).
+  - Eight moves: left and right by one block, overlapping with a partial last chunk, adjacent, across a gap, chunks capped below the distance, and used ranges only.
+  - Every crash point × lost / landed / 12 scrambled outcomes, then resume. Each time the destination equals the source and the hash chain verifies.
+  - `copier_properties.rs`: 500 random moves with a second power cut during recovery.
+  - Mutation-checked: removing the pre-commit flush, reversing the direction, chunks longer than the distance, and journaling every other chunk each fail.
+- [~] **5.4** (unit tests done; dm-dust VM test pending) Read errors.
+  - On EIO the copier stops, keeps the journal, and reports the exact block, found by rereading block by block.
+  - `accept_unreadable` writes zeros and lists the lost blocks.
+  - Unreadable blocks outside the used ranges are never read.
+- [x] **5.5** Used-range copy: `CopyScope::used_only` merges ranges and always adds the first and last MiB. Pieces are block-aligned and clipped to their chunk, and chunks without data are skipped without a commit.
 - [ ] **5.6** Oracle test in the VM: move a real ext4 image with our copier and with `sfdisk --move-data`, then compare the bytes.
 
 ### Phase 6 — Partition table
