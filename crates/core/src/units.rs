@@ -40,6 +40,23 @@ impl Sectors {
     }
 }
 
+/// A byte count the way people read it, such as `476.9 GiB`. Shared by the CLI and the GUI, so
+/// both say the same thing about the same disk.
+pub fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
 // Saturating, so absurd input (such as an untrusted plan) fails a bounds check instead of
 // wrapping around to a small, valid-looking position.
 impl Add<Sectors> for Lba {
@@ -88,6 +105,14 @@ mod tests {
     #[test]
     fn alignment_to_zero_is_never_satisfied() {
         assert!(!Lba(0).is_aligned(Sectors(0)));
+    }
+
+    #[test]
+    fn sizes_are_human_readable() {
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(1536), "1.5 KiB");
+        assert_eq!(format_bytes(256 << 20), "256.0 MiB");
+        assert_eq!(format_bytes(512_110_190_592), "476.9 GiB");
     }
 
     #[test]
