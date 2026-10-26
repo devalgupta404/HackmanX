@@ -1,4 +1,5 @@
 mod inspect;
+mod recover;
 
 use std::path::PathBuf;
 
@@ -25,9 +26,20 @@ enum Command {
     Plan { disk: PathBuf, target: PathBuf },
     /// Run every safety check for reaching TARGET. Changes nothing.
     Check { disk: PathBuf, target: PathBuf },
+    /// Finish an interrupted run from a live USB, using the options saved on the ESP in
+    /// EFI/bootshift/recovery-args.txt.
+    Resume {
+        disk: PathBuf,
+        /// The saved kernel options, such as "bootshift.disk=… bootshift.journal=…".
+        options: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
+    // The kernel starts this binary as /init in the recovery system's initramfs.
+    if std::process::id() == 1 {
+        recover::run_as_init();
+    }
     match Cli::parse().command {
         Command::Probe {
             disk,
@@ -35,5 +47,6 @@ fn main() -> anyhow::Result<()> {
         } => inspect::probe(&disk, target_template),
         Command::Plan { disk, target } => inspect::plan(&disk, &target),
         Command::Check { disk, target } => inspect::check(&disk, &target),
+        Command::Resume { disk, options } => recover::resume(&disk, &options),
     }
 }

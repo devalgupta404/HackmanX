@@ -102,21 +102,27 @@ pub trait Runner {
     }
 }
 
+/// Used when BootShift itself was started without a `PATH`, as PID 1 in the recovery system is.
+const DEFAULT_PATH: &str = "/usr/sbin:/usr/bin:/sbin:/bin";
+
 /// Runs real programs.
 pub struct SystemRunner;
 
 impl Runner for SystemRunner {
     fn run(&self, command: &CommandLine) -> Result<ToolOutput, RunError> {
         log::info!("running {command}");
-        let output = Command::new(&command.program)
+        let mut process = Command::new(&command.program);
+        process
             .args(&command.args)
             .env("LC_ALL", "C")
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|source| RunError::Start {
-                command: command.to_string(),
-                source,
-            })?;
+            .stdin(Stdio::null());
+        if std::env::var_os("PATH").is_none() {
+            process.env("PATH", DEFAULT_PATH);
+        }
+        let output = process.output().map_err(|source| RunError::Start {
+            command: command.to_string(),
+            source,
+        })?;
         let result = ToolOutput {
             status: output.status.code(),
             stdout: output.stdout,
