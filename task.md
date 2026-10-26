@@ -265,11 +265,18 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 
 ### Phase 6 — Partition table
 
-- [ ] **6.1** `disk::gpt`: read with `gptman`.
-  - Write the **backup** entries and header, flush, then the primary entries and header, flush.
-  - Preserve the disk GUID, PARTUUIDs, type GUIDs, names and attributes.
-- [ ] **6.2** Refresh the kernel's view with BLKPG per partition (delete, add, resize). Never use BLKRRPART while anything is open.
-- [ ] **6.3** Crash tests: crash anywhere in 6.1. Resume writes the journal's target table again, and the result is always the target table.
+- [x] **6.1** `disk::GptImage`: the two GPT regions held in memory and edited with `gptman` through a sparse whole-disk view.
+  - `read` falls back to the backup copy when the primary is damaged.
+  - `with_partitions(layout, removable)` keeps every partition's slot, GUIDs, type, name and attributes. It refuses to drop an entry the layout doesn't describe unless it is listed as removable (a swap being recreated). Recreated entries return to their own slot.
+  - `write_over(device, previous)` writes only the sectors that differ from the table it was derived from: backup copy, flush, primary copy, flush. The protective MBR is never rewritten.
+  - The journal will keep the original image, so a resume rebuilds the same target from the same base.
+- [ ] **6.2** `disk::RealDevice` and the kernel refresh.
+  - The device: `O_DIRECT` with an aligned bounce buffer, `fdatasync`, and BLKGETSIZE64/BLKSSZGET (or file size, for image files).
+  - Refresh the kernel's view with BLKPG per partition (delete, add, resize). Never use BLKRRPART while anything is open.
+- [x] **6.3** Crash tests (`crates/disk/tests/gpt.rs`).
+  - Every crash point × lost / landed / 32 scrambled outcomes: the table always reads as the old or the new one, and rewriting from the original finishes with both copies holding the target.
+  - Also tested: identity kept, MBR untouched, undescribed partitions refused, slot changes refused, overlap refused, swap removed and recreated in its slot.
+  - Mutation-checked: dropping the flush between the copies fails the crash test.
 - [ ] **6.4** User backup: `sfdisk -d` text + raw table sectors (`sfdisk --backup-pt-sectors`), saved to the ESP before the restart and offered in the GUI as a download.
 
 ### Phase 7 — Filesystem adapters (shelling out, behind one runner)

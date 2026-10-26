@@ -10,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 bootshift-core.workspace = true
+gptman.workspace = true
 thiserror.workspace = true
 
 [lints]
