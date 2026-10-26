@@ -10,4 +10,5 @@ pub mod prepare;
 pub mod probe;
 pub mod recovery;
 pub mod run_plan;
+pub mod service;
 pub mod system_filesystems;
