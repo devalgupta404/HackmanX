@@ -78,7 +78,7 @@ pub fn write_seed(paths: &Paths) -> Result<()> {
     // growpart off: the root partition must not swallow the disk, the data partition and the
     // move gap need the space.
     let user_data = format!(
-        "#cloud-config\nssh_authorized_keys:\n  - {}\ngrowpart:\n  mode: \"off\"\nresize_rootfs: false\npackage_update: true\npackages: [zstd, ntfs-3g, smartmontools, efibootmgr, gdisk]\n",
+        "#cloud-config\nssh_authorized_keys:\n  - {}\ngrowpart:\n  mode: \"off\"\nresize_rootfs: false\npackage_update: true\npackages: [zstd, ntfs-3g, smartmontools, efibootmgr, gdisk, btrfs-progs]\n",
         public_key.trim()
     );
     std::fs::write(paths.out.join("user-data"), user_data)?;
@@ -122,7 +122,9 @@ impl Guest {
         } else {
             // VT-x off in the BIOS, or no KVM: emulate. Works everywhere, roughly 15x slower.
             eprintln!("warning: /dev/kvm is missing, falling back to TCG emulation (slow)");
-            command.args(["-accel", "tcg,thread=multi"]).args(["-cpu", "max"]);
+            command
+                .args(["-accel", "tcg,thread=multi"])
+                .args(["-cpu", "max"]);
         }
         command
             .args(["-machine", "q35"])
@@ -263,7 +265,9 @@ impl Guest {
     }
 
     pub fn serial_len(&self) -> u64 {
-        std::fs::metadata(&self.serial).map(|m| m.len()).unwrap_or(0)
+        std::fs::metadata(&self.serial)
+            .map(|m| m.len())
+            .unwrap_or(0)
     }
 
     fn serial_from(&self, offset: u64) -> String {

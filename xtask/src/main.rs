@@ -169,10 +169,16 @@ fn demo_gui(paths: &Paths, fresh: bool) -> Result<()> {
     println!("The guest's bus is forwarded to {FORWARDED_BUS}. Build the GUI once:\n");
     println!("  cargo build -p bootshift-gui --release\n");
     println!("Then launch the desktop app against the guest's REAL disk:\n");
-    println!("  DBUS_SYSTEM_BUS_ADDRESS=unix:path={FORWARDED_BUS} {}\n", gui.display());
+    println!(
+        "  DBUS_SYSTEM_BUS_ADDRESS=unix:path={FORWARDED_BUS} {}\n",
+        gui.display()
+    );
     println!("Drag a partition, run the checks, and apply. When it says to restart, reboot the");
     println!("guest to watch the recovery console in the VM window:\n");
-    println!("  ssh -p {port} -i {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@127.0.0.1 sudo reboot\n", key.display());
+    println!(
+        "  ssh -p {port} -i {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@127.0.0.1 sudo reboot\n",
+        key.display()
+    );
     println!("After it boots back, reopen the GUI to see the new layout.");
     println!("Stop everything:  pkill -f demo-gui.qcow2; pkill -f {FORWARDED_BUS}\n");
     println!("==============================================================\n");
@@ -181,12 +187,14 @@ fn demo_gui(paths: &Paths, fresh: bool) -> Result<()> {
 
 fn build_helper(paths: &Paths) -> Result<PathBuf> {
     println!("building bootshiftd…");
-    run(Command::new("cargo")
-        .current_dir(&paths.repo)
-        .args(["build", "-p", "bootshift-helper", "--release"]))?;
+    run(Command::new("cargo").current_dir(&paths.repo).args([
+        "build",
+        "-p",
+        "bootshift-helper",
+        "--release",
+    ]))?;
     Ok(paths.repo.join("target/release/bootshiftd"))
 }
-
 
 /// Boots the guest in a window, installs today's binary, writes a ready target that moves and
 /// grows the data partition, then leaves the machine running for you to drive by hand.
@@ -205,7 +213,9 @@ fn demo(paths: &Paths, fresh: bool) -> Result<()> {
         println!("the BootShift recovery console resumes from the journal and finishes, then");
         println!("the machine boots normally.\n");
         println!("Once it reaches the login screen, reconnect and show the result:\n");
-        println!("  ssh -p {port} -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@127.0.0.1");
+        println!(
+            "  ssh -p {port} -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@127.0.0.1"
+        );
         println!("  sudo bootshift probe /dev/sda\n");
         println!("To start over from a clean disk instead:  cargo xtask demo --fresh");
         println!("Stop the VM when done:  pkill -f demo.qcow2\n");
@@ -236,7 +246,9 @@ fn demo(paths: &Paths, fresh: bool) -> Result<()> {
         .ssh(&format!("sudo blkid -s PARTUUID -o value {data_node}"))?
         .trim()
         .to_string();
-    let template = guest.ssh(&format!("sudo bootshift probe {disk_node} --target-template"))?;
+    let template = guest.ssh(&format!(
+        "sudo bootshift probe {disk_node} --target-template"
+    ))?;
     let mut target: serde_json::Value = serde_json::from_str(&template)?;
     let entry = target
         .get_mut(&partuuid)
@@ -255,7 +267,9 @@ fn demo(paths: &Paths, fresh: bool) -> Result<()> {
     println!("The VM window is open on this screen. Keep it visible: the recovery");
     println!("console appears there during the reboot.\n");
     println!("In a NEW terminal, connect to the demo machine:\n");
-    println!("  ssh -p {port} -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@127.0.0.1\n");
+    println!(
+        "  ssh -p {port} -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@127.0.0.1\n"
+    );
     println!("Then run these, one at a time:\n");
     println!("  # 1. BEFORE: show the partitions");
     println!("  sudo bootshift probe {disk_node}\n");
@@ -265,7 +279,9 @@ fn demo(paths: &Paths, fresh: bool) -> Result<()> {
     println!("  # 3. Reboot — watch the BootShift recovery console in the VM window");
     println!("  sudo reboot\n");
     println!("  #    (optional: to show crash-safety, close the VM window mid-move to cut the");
-    println!("  #     power, then relaunch with: cargo xtask demo — it resumes from the journal)\n");
+    println!(
+        "  #     power, then relaunch with: cargo xtask demo — it resumes from the journal)\n"
+    );
     println!("  # 4. AFTER: reconnect once it boots back, and show the partitions moved");
     println!("  sudo bootshift probe {disk_node}\n");
     println!("The data partition's start and size will have changed; every file is intact.");
@@ -276,12 +292,17 @@ fn demo(paths: &Paths, fresh: bool) -> Result<()> {
 
 /// 1 MiB alignment in 512-byte sectors.
 const ALIGN: u64 = 2048;
-/// How far the data partition moves left, in sectors (768 MiB).
-const GAP_SECTORS: u64 = 768 * 2048;
-/// The data partition's size, in sectors (2 GiB).
-const DATA_SECTORS: u64 = 2 * 1024 * 2048;
-/// How many MiB of random files the proof copies and verifies.
-const DATA_MIB: u32 = 1200;
+/// How far the data partition moves left, in sectors (512 MiB). This is also how much the move
+/// grows it by, so the free gap in front becomes slack the demo can grow into and shrink back.
+const GAP_SECTORS: u64 = 512 * 2048;
+/// The data partition's size, in sectors (7 GiB). Deliberately far larger than the data it holds
+/// so a Btrfs shrink has room to give back and a later grow has room to take, both on screen.
+const DATA_SECTORS: u64 = 7 * 1024 * 2048;
+/// How many MiB of random files fill the data partition. The move copies Btrfs's allocated extents
+/// (one data chunk plus a little metadata), not the whole partition, so this stays a small fraction
+/// of DATA_SECTORS and the partition keeps real slack. Sized so the copy runs for a watchable spell
+/// at this box's KVM speed, where the crash-safe copier's per-chunk flush holds it near 30 MiB/s.
+const DATA_MIB: u32 = 400;
 
 fn prepare_vm(paths: &Paths, fresh: bool) -> Result<()> {
     // The qcow2 exists from the moment it is created, long before provisioning finishes, so
@@ -307,7 +328,7 @@ fn prepare_vm(paths: &Paths, fresh: bool) -> Result<()> {
     let mut guest = Guest::launch(paths, &prepared, display_from_env())?;
     guest.wait_ssh()?;
     guest.ssh("cloud-init status --wait >/dev/null; cloud-init status")?;
-    for tool in ["zstd", "ntfsresize", "smartctl", "efibootmgr"] {
+    for tool in ["zstd", "ntfsresize", "smartctl", "efibootmgr", "mkfs.btrfs"] {
         guest
             .ssh(&format!("command -v {tool}"))
             .with_context(|| format!("{tool} missing in the guest after provisioning"))?;
@@ -318,7 +339,9 @@ fn prepare_vm(paths: &Paths, fresh: bool) -> Result<()> {
     let data_node = partition_of(&disk_node, 2);
     // qemu-img grew the virtual disk, but the GPT still describes the base image's size.
     // Move the backup structures to the new end so the usable area covers the added space.
-    guest.ssh(&format!("sudo sgdisk -e {disk_node} && sudo partx --update {disk_node}"))?;
+    guest.ssh(&format!(
+        "sudo sgdisk -e {disk_node} && sudo partx --update {disk_node}"
+    ))?;
     let table = guest.sfdisk_table(&disk_node)?;
     let root_end = table
         .partitions
@@ -341,20 +364,26 @@ fn prepare_vm(paths: &Paths, fresh: bool) -> Result<()> {
         "echo 'start={data_start}, size={DATA_SECTORS}, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4' \
          | sudo sfdisk --append --force --no-reread {disk_node} && sudo partx --update {disk_node}"
     ))?;
+    // Btrfs, not ext4: it is the one filesystem this build can move, grow AND shrink today,
+    // so the demo shows all three. Its online resize is journaled, so it needs no guarded run.
+    // Single (not DUP) metadata keeps the allocated extents the copier moves down to roughly the
+    // data itself, so the move stays a watchable span rather than minutes on this slow qcow2.
     guest.ssh(&format!(
-        "sudo mkfs.ext4 -q -L bootproof {data_node} && sudo mkdir -p /mnt/data \
+        "sudo mkfs.btrfs -q -f -m single -L bootproof {data_node} && sudo mkdir -p /mnt/data \
          && sudo mount {data_node} /mnt/data",
     ))?;
     guest.ssh(&format!(
         "for i in $(seq 1 {}); do sudo dd if=/dev/urandom of=/mnt/data/file$i bs=1M count=100 \
          status=none; done && sudo sh -c 'cd /mnt/data && sha256sum file* > MANIFEST' \
-         && sudo umount /mnt/data",
+         && sudo sync /mnt/data && sudo umount /mnt/data",
         DATA_MIB / 100
     ))?;
 
     println!("installing the static bootshift binary…");
     guest.scp(&paths.musl_binary(), "/tmp/bootshift")?;
-    guest.ssh("sudo install -m 0755 /tmp/bootshift /usr/local/sbin/bootshift && sudo bootshift --version")?;
+    guest.ssh(
+        "sudo install -m 0755 /tmp/bootshift /usr/local/sbin/bootshift && sudo bootshift --version",
+    )?;
 
     guest.poweroff()?;
     std::fs::write(&marker, b"ok\n")?;
@@ -408,7 +437,9 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
     let boot_order_before = guest.ssh("sudo efibootmgr | grep ^BootOrder")?;
 
     println!("planning: move the data partition left by {GAP_SECTORS} sectors and grow it…");
-    let template = guest.ssh(&format!("sudo bootshift probe {disk_node} --target-template"))?;
+    let template = guest.ssh(&format!(
+        "sudo bootshift probe {disk_node} --target-template"
+    ))?;
     let mut target: serde_json::Value = serde_json::from_str(&template)?;
     let entry = target
         .get_mut(&partuuid)
@@ -493,9 +524,8 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
         bail!("BootOrder was not restored: {boot_order_before} vs {boot_order_after}");
     }
     // vfat mounts root-only (dmask=0077), so the listing needs sudo.
-    let journal = guest.ssh(
-        "sudo mount /boot/efi 2>/dev/null; sudo ls /boot/efi/EFI/bootshift/ && echo ESP-OK",
-    )?;
+    let journal = guest
+        .ssh("sudo mount /boot/efi 2>/dev/null; sudo ls /boot/efi/EFI/bootshift/ && echo ESP-OK")?;
     if !journal.contains("ESP-OK") {
         bail!("the ESP looks wrong:\n{journal}");
     }
@@ -513,7 +543,9 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
 
 /// The guest's one disk, whatever the controller calls it.
 fn guest_disk(guest: &mut Guest) -> Result<String> {
-    let path = guest.ssh("lsblk --nodeps --noheadings --raw --output PATH,TYPE | awk '$2==\"disk\"{print $1; exit}'")?;
+    let path = guest.ssh(
+        "lsblk --nodeps --noheadings --raw --output PATH,TYPE | awk '$2==\"disk\"{print $1; exit}'",
+    )?;
     let path = path.trim().to_string();
     if path.is_empty() {
         bail!("the guest reports no disk");
@@ -532,16 +564,14 @@ fn partition_of(disk: &str, number: u32) -> String {
 
 fn build_musl_bootshift(paths: &Paths) -> Result<()> {
     println!("building the static bootshift binary…");
-    run(Command::new("cargo")
-        .current_dir(&paths.repo)
-        .args([
-            "build",
-            "-p",
-            "bootshift-cli",
-            "--release",
-            "--target",
-            "x86_64-unknown-linux-musl",
-        ]))
+    run(Command::new("cargo").current_dir(&paths.repo).args([
+        "build",
+        "-p",
+        "bootshift-cli",
+        "--release",
+        "--target",
+        "x86_64-unknown-linux-musl",
+    ]))
 }
 
 fn overlay_of(paths: &Paths, base: &PathBuf, name: &str) -> Result<PathBuf> {
