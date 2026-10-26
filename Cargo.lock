@@ -195,6 +195,7 @@ name = "bootshift-disk"
 version = "0.1.0"
 dependencies = [
  "bootshift-core",
+ "crc32c",
  "gptman",
  "rustix",
  "tempfile",

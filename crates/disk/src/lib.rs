@@ -6,14 +6,18 @@ mod crash_disk;
 mod device;
 mod faulty_disk;
 mod gpt;
+mod guard;
 mod journal_store;
 mod mem_disk;
 mod real_device;
+mod undo_log;
 
 pub use crash_disk::{CrashDisk, PendingWrites};
 pub use device::{BlockDevice, DiskError};
 pub use faulty_disk::FaultyDisk;
 pub use gpt::{GptEntry, GptError, GptImage};
+pub use guard::{GuardedDevice, roll_back};
 pub use journal_store::{FileExtent, Journal, JournalError, JournalFile, OpenedJournal};
 pub use mem_disk::MemDisk;
 pub use real_device::{Access, RealDevice};
+pub use undo_log::{UndoError, UndoLog, UndoRecord};

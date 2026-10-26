@@ -175,6 +175,10 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
     - Recovery replays the log backwards, then reruns the tool.
   - **Verify both** with dm-log-writes, replaying to every flush during each tool run. Measure the space they need on a 100 GB filesystem that is 60% full. Pick one and record the reasons in section 1.
   - Done when: for each tool, every replayed crash point rolls back to a state that is fsck-clean and byte-identical to the original, and the rerun then succeeds.
+  - **Progress:** candidate B's core is built and crash-tested (`disk::GuardedDevice`, `disk::UndoLog`, `disk::roll_back`).
+    - CrashDisk test: a pretend tool's scattered writes, a crash at every point × 26 outcomes, then rollback restores every originally used byte.
+    - Mutation-checked: dropping the flush before the data write fails.
+    - Still needed (root + VM): a kernel transport (ublk via `libublk`, or an NBD server) so `resize2fs`/`ntfsresize` write through the guard; then measure the undo-area size and compare with candidate A.
 - [x] **0.7** Decisions D1–D6 resolved (section 3).
 
 ### Phase 1 — Repository skeleton
@@ -293,7 +297,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - `signature` runs `blkid --probe` for the recovery system, which has no udev.
   - `core::layout::Guid` parses the canonical text form.
   - Tests: a dual-boot + USB fixture, this machine's real `lsblk` output, and `blkid` on image files.
-- [ ] **7.3** `fs::guard`: guarded runs, using the design chosen in 0.6. Durable undo log, rollback, rerun.
+- [~] **7.3** (block-level core done in `disk::guard`; kernel transport and executor wiring pending) Guarded runs, using the design chosen in 0.6. Durable undo log, rollback, rerun.
   - Crash tests use CrashDisk (unit) and dm-log-writes (VM).
 - [~] **7.4** (adapter done; the guarded wrapping waits on 7.3) `fs::ext4`.
   - `summary` (`tune2fs -l`: state, errors, size), `check` (`e2fsck -f -p`, exit 0/1 only), `min_size` (`resize2fs -P`).
