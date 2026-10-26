@@ -70,6 +70,10 @@ enum Task {
         /// Size of the data disk to migrate, in MiB.
         #[arg(long, default_value_t = 256)]
         data_mib: u64,
+        /// Live migration: keep the source filesystem mounted and churning while it migrates, with
+        /// the eBPF tracker, a freeze cutover and a signed receipt.
+        #[arg(long)]
+        live: bool,
     },
 }
 
@@ -85,7 +89,7 @@ fn main() -> Result<()> {
         Task::BootProof { no_power_cut } => boot_proof(&paths, no_power_cut),
         Task::Demo { fresh } => demo(&paths, fresh),
         Task::DemoGui { fresh } => demo_gui(&paths, fresh),
-        Task::MigrateRig { data_mib } => migrate_rig(&paths, data_mib),
+        Task::MigrateRig { data_mib, live } => migrate_rig(&paths, data_mib, live),
     }
 }
 
@@ -579,9 +583,15 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
 /// over a real TCP link, then proves the target is byte-identical and its filesystem mounts intact.
 /// The link runs through the host loopback: the target forwards a host port to its receiver, and the
 /// source reaches it as `10.0.2.2:<port>` (its view of the host). Nothing touches a real disk.
-fn migrate_rig(paths: &Paths, data_mib: u64) -> Result<()> {
+fn migrate_rig(paths: &Paths, data_mib: u64, live: bool) -> Result<()> {
     prepare_vm(paths, false)?;
-    let migrate_bin = build_musl_migrate(paths)?;
+    // Live mode needs the eBPF tracker, which libbpf ties to glibc, so it uses the dynamic binary;
+    // the plain copy uses the static musl binary.
+    let migrate_bin = if live {
+        build_migrate_ebpf(paths)?
+    } else {
+        build_musl_migrate(paths)?
+    };
 
     let data_bytes = data_mib * (1 << 20);
     let scratch_bytes = 64u64 * (1 << 20);
@@ -626,15 +636,20 @@ fn migrate_rig(paths: &Paths, data_mib: u64) -> Result<()> {
 
     println!("filling the source data disk with a filesystem and checksummed files…");
     source.ssh(&format!("sudo mkfs.ext4 -q -F {src_dev}"))?;
-    source.ssh(&format!(
-        "sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d \
-         && for i in $(seq 1 {}); do sudo dd if=/dev/urandom of=/mnt/d/file$i bs=1M count=8 status=none; done \
-         && sudo sh -c 'cd /mnt/d && sha256sum file* > MANIFEST' \
-         && sudo sync && sudo umount /mnt/d",
+    let files_cmd = format!(
+        "for i in $(seq 1 {}); do sudo dd if=/dev/urandom of=/mnt/d/file$i bs=1M count=8 status=none; done \
+         && sudo sh -c 'cd /mnt/d && sha256sum file* > MANIFEST' && sudo sync",
         (data_mib / 16).max(1),
-    ))?;
-    let src_hash = device_sha(&mut source, src_dev)?;
-    println!("source disk sha256: {src_hash}");
+    );
+    if live {
+        // Keep the source mounted and churning: the tracker captures the writes, and the freeze
+        // cutover plus the receipt prove the target equals the frozen image.
+        source.ssh(&format!("sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd}"))?;
+    } else {
+        source.ssh(&format!(
+            "sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd} && sudo umount /mnt/d"
+        ))?;
+    }
 
     println!("installing the migrate binary in both guests…");
     source.scp(&migrate_bin, "/tmp/bootshift-migrate")?;
@@ -653,6 +668,37 @@ fn migrate_rig(paths: &Paths, data_mib: u64) -> Result<()> {
     target.ssh("for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q ':9876' && exit 0; sleep 0.5; done; echo 'receiver never listened'; cat /tmp/recv.log 2>/dev/null; exit 1")
         .context("the receiver never started listening")?;
 
+    if live {
+        migrate_live(&mut source, &mut target, src_dev, tgt_dev, mig_port)?;
+    } else {
+        migrate_copy(&mut source, &mut target, src_dev, tgt_dev, mig_port)?;
+    }
+
+    source.poweroff()?;
+    target.poweroff()?;
+    println!();
+    println!("MIGRATE RIG PASSED");
+    println!("  filled a {data_mib} MiB data disk on the source machine");
+    if live {
+        println!("  migrated it LIVE (mounted and churning) to a second machine over a real link");
+        println!("  froze the source, drained the last writes, and signed a byte-equality receipt");
+        println!("  the migrated filesystem is clean and mounts on the target");
+    } else {
+        println!("  migrated it to a blank disk on a second machine over a real TCP link");
+        println!("  the target is byte-for-byte identical, and its filesystem mounts intact");
+    }
+    Ok(())
+}
+
+/// The plain copy: send the unmounted source, verify the target is byte-identical and its files check.
+fn migrate_copy(
+    source: &mut Guest,
+    target: &mut Guest,
+    src_dev: &str,
+    tgt_dev: &str,
+    mig_port: u16,
+) -> Result<()> {
+    let src_hash = device_sha(source, src_dev)?;
     println!("sending from the source to the target over the link…");
     let sent = source.ssh(&format!(
         "sudo /usr/local/sbin/bootshift-migrate send --source {src_dev} --to 10.0.2.2:{mig_port}"
@@ -662,18 +708,14 @@ fn migrate_rig(paths: &Paths, data_mib: u64) -> Result<()> {
     }
     println!("sender: {}", sent.trim());
 
-    // Let the receiver finish committing, then read its log.
     let recv_log = target.ssh(
         "for i in $(seq 1 30); do systemctl is-active migrate-recv >/dev/null 2>&1 || break; sleep 1; done; \
          cat /tmp/recv.log 2>/dev/null | tail -5",
     )?;
-    println!("receiver log:\n{}", recv_log.trim());
     if !recv_log.contains("written and verified") {
         bail!("the receiver did not report a verified target:\n{recv_log}");
     }
-
-    println!("verifying the target disk is byte-identical…");
-    let tgt_hash = device_sha(&mut target, tgt_dev)?;
+    let tgt_hash = device_sha(target, tgt_dev)?;
     if tgt_hash != src_hash {
         bail!("the target disk differs: source {src_hash} vs target {tgt_hash}");
     }
@@ -684,15 +726,55 @@ fn migrate_rig(paths: &Paths, data_mib: u64) -> Result<()> {
     if !files.contains("FILES-OK") {
         bail!("the migrated filesystem failed verification:\n{files}");
     }
+    Ok(())
+}
 
-    source.poweroff()?;
-    target.poweroff()?;
-    println!();
-    println!("MIGRATE RIG PASSED");
-    println!("  filled a {data_mib} MiB data disk on the source machine");
-    println!("  migrated it to a blank disk on a second machine over a real TCP link");
-    println!("  the target is byte-for-byte identical (sha256 {src_hash})");
-    println!("  the migrated filesystem mounts and every file checks out");
+/// The live migration: churn the mounted source while it migrates, then check the sender committed
+/// with a matching receipt and the migrated filesystem is clean.
+fn migrate_live(
+    source: &mut Guest,
+    target: &mut Guest,
+    src_dev: &str,
+    tgt_dev: &str,
+    mig_port: u16,
+) -> Result<()> {
+    // A background writer keeps changing the mounted source during the migration.
+    source.ssh(
+        "sudo systemctl reset-failed migrate-churn 2>/dev/null; true; \
+         sudo systemd-run --unit=migrate-churn --collect /bin/sh -c \
+         'for r in $(seq 1 400); do dd if=/dev/urandom of=/mnt/d/churn$((r%6)) bs=256k count=1 \
+          conv=notrunc status=none; sync /mnt/d; sleep 0.2; done'",
+    )?;
+
+    println!("migrating live while the source churns…");
+    let sent = source.ssh(&format!(
+        "sudo /usr/local/sbin/bootshift-migrate send --source {src_dev} --track {src_dev} \
+         --to 10.0.2.2:{mig_port} --freeze /mnt/d --budget-ms 2000"
+    ))?;
+    let _ = source.ssh("sudo systemctl stop migrate-churn 2>/dev/null; true");
+    if !sent.contains("migration committed") || !sent.contains("roots match") {
+        bail!("the live migration did not commit with a matching receipt:\n{sent}");
+    }
+    println!("sender:\n{}", sent.trim());
+
+    let recv_log = target.ssh(
+        "for i in $(seq 1 30); do systemctl is-active migrate-recv >/dev/null 2>&1 || break; sleep 1; done; \
+         cat /tmp/recv.log 2>/dev/null | tail -6",
+    )?;
+    if !recv_log.contains("written and verified") {
+        bail!("the receiver did not report a verified target:\n{recv_log}");
+    }
+    println!("receiver:\n{}", recv_log.trim());
+
+    // The frozen image the receipt covers must be a consistent filesystem: fsck it, then mount it.
+    let check = target.ssh(&format!(
+        "sudo e2fsck -fn {tgt_dev} >/dev/null 2>&1 && echo FSCK-CLEAN; \
+         sudo mkdir -p /mnt/d && sudo mount {tgt_dev} /mnt/d && ls /mnt/d >/dev/null && echo MOUNT-OK; \
+         sudo umount /mnt/d 2>/dev/null || true",
+    ))?;
+    if !check.contains("FSCK-CLEAN") || !check.contains("MOUNT-OK") {
+        bail!("the migrated filesystem is not clean/mountable:\n{check}");
+    }
     Ok(())
 }
 
@@ -700,6 +782,20 @@ fn migrate_rig(paths: &Paths, data_mib: u64) -> Result<()> {
 fn device_sha(guest: &mut Guest, dev: &str) -> Result<String> {
     let out = guest.ssh(&format!("sudo sha256sum {dev}"))?;
     Ok(out.split_whitespace().next().unwrap_or("").to_string())
+}
+
+/// The dynamic bootshift-migrate binary with the eBPF tracker, for live mode.
+fn build_migrate_ebpf(paths: &Paths) -> Result<PathBuf> {
+    println!("building bootshift-migrate with the eBPF tracker…");
+    run(Command::new("cargo").current_dir(&paths.repo).args([
+        "build",
+        "-p",
+        "bootshift-migrate-cli",
+        "--features",
+        "ebpf",
+        "--release",
+    ]))?;
+    Ok(paths.repo.join("target/release/bootshift-migrate"))
 }
 
 /// The static bootshift-migrate binary built for musl.
