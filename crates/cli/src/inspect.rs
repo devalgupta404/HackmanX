@@ -1,15 +1,17 @@
 //! The read-only commands: probe, plan and check.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
+use bootshift_boot::initramfs::{self, Inputs};
 use bootshift_core::layout::{Layout, Target};
 use bootshift_core::plan::{Operation, Plan};
 use bootshift_core::planner::{PlanError, plan as make_plan};
 use bootshift_core::refusal::Refusal;
 use bootshift_disk::{Access, GptImage, RealDevice};
 use bootshift_engine::facts::{self, Environment};
-use bootshift_engine::preflight;
+use bootshift_engine::preflight::{self, Bootloader, Facts};
+use bootshift_engine::prepare::{self, Prepare};
 use bootshift_engine::probe;
 use bootshift_fs::probe::{DiskInfo, disks, find_disk};
 use bootshift_fs::run::SystemRunner;
@@ -45,12 +47,86 @@ pub fn plan(disk: &Path, target: &Path) -> anyhow::Result<()> {
 pub fn check(disk: &Path, target: &Path) -> anyhow::Result<()> {
     let inspected = inspect(disk)?;
     let plan = planned(&inspected.layout, target)?;
-    let changed: Vec<_> = plan.operations.iter().map(Operation::partition).collect();
+    let (_, refusals) = run_checks(&inspected, &plan);
+    if refusals.is_empty() {
+        println!("Every check passed.");
+        return Ok(());
+    }
+    print_refusals(&refusals);
+    bail!("{} check(s) failed", refusals.len())
+}
 
-    let release = rustix::system::uname()
-        .release()
-        .to_string_lossy()
-        .into_owned();
+pub fn apply(
+    disk: &Path,
+    target: &Path,
+    confirmed: bool,
+    init: Option<PathBuf>,
+) -> anyhow::Result<()> {
+    let inspected = inspect(disk)?;
+    let plan = planned(&inspected.layout, target)?;
+    if plan.operations.is_empty() {
+        println!("The disk already has this layout.");
+        return Ok(());
+    }
+    let (facts, refusals) = run_checks(&inspected, &plan);
+    if !refusals.is_empty() {
+        print_refusals(&refusals);
+        bail!("{} check(s) failed, so nothing was changed", refusals.len());
+    }
+    print_plan(&inspected.layout, &plan);
+    if !confirmed {
+        println!(
+            "Nothing has changed. Make sure your data is backed up, then run again with --yes."
+        );
+        return Ok(());
+    }
+
+    let init = match init {
+        Some(path) => path,
+        None => std::env::current_exe().context("finding the bootshift binary")?,
+    };
+    if !initramfs::shared_libraries(&SystemRunner, &init)?.is_empty() {
+        bail!(
+            "{} is not a static binary. Build one with `cargo build --release --target x86_64-unknown-linux-musl` and pass it with --init",
+            init.display()
+        );
+    }
+    let Bootloader::Grub { vendor } = &facts.bootloader else {
+        bail!("no supported bootloader was found");
+    };
+    let esp_mount = facts::esp_mountpoint(&inspected.disk, &inspected.layout)
+        .context("the EFI system partition isn't mounted")?;
+    let release = kernel_release();
+    let kernel_image = PathBuf::from(format!("/boot/vmlinuz-{release}"));
+    let search_path = search_path();
+    let work_dir = std::env::temp_dir().join(format!("bootshift-{}", std::process::id()));
+    std::fs::create_dir_all(&work_dir).context("creating a work directory")?;
+
+    prepare::prepare(&Prepare {
+        runner: &SystemRunner,
+        disk: &inspected.disk,
+        layout: &inspected.layout,
+        plan: &plan,
+        esp_mount: &esp_mount,
+        grub_vendor: vendor,
+        kernel_image: &kernel_image,
+        initramfs: Inputs {
+            init: &init,
+            kernel_release: &release,
+            search_path: &search_path,
+        },
+        work_dir: &work_dir,
+    })?;
+    let _ = std::fs::remove_dir_all(&work_dir);
+
+    println!("Everything is ready. Restart the computer to begin.");
+    println!("If the power goes out during the change, just turn the computer back on.");
+    Ok(())
+}
+
+fn run_checks(inspected: &Inspected, plan: &Plan) -> (Facts, Vec<Refusal>) {
+    let changed: Vec<_> = plan.operations.iter().map(Operation::partition).collect();
+    let release = kernel_release();
     let env = Environment {
         runner: &SystemRunner,
         sys: Path::new("/sys"),
@@ -60,14 +136,29 @@ pub fn check(disk: &Path, target: &Path) -> anyhow::Result<()> {
     };
     let facts = facts::gather(&env, &inspected.disk, &inspected.layout, &changed);
     let mut refusals = preflight::evaluate(&facts, &inspected.layout);
-    refusals.extend(preflight::unavailable_operations(&inspected.layout, &plan));
+    refusals.extend(preflight::unavailable_operations(&inspected.layout, plan));
+    (facts, refusals)
+}
 
-    if refusals.is_empty() {
-        println!("Every check passed.");
-        return Ok(());
-    }
-    print_refusals(&refusals);
-    bail!("{} check(s) failed", refusals.len())
+fn kernel_release() -> String {
+    rustix::system::uname()
+        .release()
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn search_path() -> Vec<PathBuf> {
+    [
+        "/usr/local/sbin",
+        "/usr/local/bin",
+        "/usr/sbin",
+        "/usr/bin",
+        "/sbin",
+        "/bin",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect()
 }
 
 fn inspect(disk: &Path) -> anyhow::Result<Inspected> {

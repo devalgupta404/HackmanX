@@ -279,7 +279,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - Every crash point × lost / landed / 32 scrambled outcomes: the table always reads as the old or the new one. Rebuilding from the surviving copy and writing finishes with both copies holding the target and the MBR untouched.
   - Also tested: identity kept, MBR untouched, undescribed partitions refused, slot changes refused, overlap refused, swap removed and recreated in its slot.
   - Mutation-checked: dropping the flush between the copies fails the crash test.
-- [ ] **6.4** User backup: `sfdisk -d` text + raw table sectors (`sfdisk --backup-pt-sectors`), saved to the ESP before the restart and offered in the GUI as a download.
+- [x] **6.4** (`sfdisk --dump` saved to `EFI/bootshift/table-backup.sfdisk`; GUI download comes with Phase 13) User backup: `sfdisk -d` text + raw table sectors (`sfdisk --backup-pt-sectors`), saved to the ESP before the restart and offered in the GUI as a download.
 
 ### Phase 7 — Filesystem adapters (shelling out, behind one runner)
 
@@ -366,13 +366,15 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
     - module files from `modprobe --show-depends --set-version` (built-in or missing modules skipped), kmod's `modules.*` indexes, and `/etc/bootshift/modules`.
   - `compress` uses `zstd -19`.
   - Tested by building a real initramfs from this machine.
-- [ ] **10.2** `bootshift recover` (PID 1 mode).
-  - Mount proc, sys and dev; load modules.
-  - Find the journal from the kernel command line (`bootshift.journal=PARTUUID=…:extents`), then run the executor.
-  - Never mount the ESP or a partition that is being moved.
-- [ ] **10.3** Recovery text screen: current step, progress bar, time left, and "If the power goes out, just turn the computer back on."
-  - On a fatal error: explain it, keep the redirect in place, and power off.
-- [~] **10.4** (journal file done; copying kernel and initramfs pending) `boot::journal_file`.
+- [~] **10.2** (written; needs a VM boot to prove) Recovery as PID 1 (`cli::recover::run_as_init`, started automatically when the binary is PID 1; there is no manual `recover` subcommand).
+  - Mounts proc, sys, devtmpfs, /run and efivarfs, and loads `/etc/bootshift/modules` with `modprobe`.
+  - Parses `/proc/cmdline` and waits up to 60 s for the disk whose GPT disk GUID matches.
+  - `engine::recovery::run` checks the table still matches the plan before the first write (if not: restore booting, finish the journal, stop). Then it executes, restores booting and commits Done. The disk is opened `ReadWriteShared` so tools can open partitions.
+  - Never touches the ESP during the move; it is mounted only when restoring booting.
+- [~] **10.3** (text messages done; progress bar and time left pending) Recovery screen.
+  - Shows what it is doing and "If the power goes out, just turn the computer back on."
+  - On an error: explains, keeps the redirect, waits for Enter, then powers off. It never boots an OS over a half-moved disk.
+- [x] **10.4** `boot::journal_file` (plus `engine::prepare`, which copies the kernel and initramfs).
   - `create` writes the journal file and fsyncs it and its directory.
   - `extents` locates it with `filefrag -v -b512` (FIEMAP), refusing extents flagged delalloc, unknown, inline, encoded or not_aligned, and turning them into whole-disk offsets.
   - `boot::cmdline::RecoveryArgs` hands recovery the disk GUID and the journal's pieces on the kernel command line: `bootshift.disk=… bootshift.journal=<offset>+<len>,…`.
@@ -384,8 +386,8 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - `recovery_order` puts BootCurrent (the running distro) first and drops Windows Boot Manager from the order; the entry itself is kept.
   - `set_order` uses `efibootmgr --bootorder`.
   - Saving the original order in the plan record comes with the prepare step.
-- [ ] **10.7** Done step: mount the ESP, restore the bootloader config and BootOrder, delete temp files, unmount, reboot. Every action is idempotent.
-- [ ] **10.8** Escape hatch: `bootshift resume --journal …` works from any live USB with the same binary.
+- [x] **10.7** Done step (`engine::recovery::restore_booting`): restore BootOrder, mount the ESP, put `grub.cfg` back, unmount, then commit Done. Every action is safe to repeat. Files in `EFI/bootshift/` are left for the normal system to clean up.
+- [x] **10.8** Escape hatch: `bootshift resume <disk> "<options>"` finishes a run from any live USB, using the options saved in `EFI/bootshift/recovery-args.txt`. It refuses a disk whose GPT GUID doesn't match.
 
 ### Phase 10b — Command line
 
@@ -394,12 +396,16 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - `engine::probe::layout` builds the planner's layout from the GPT, `lsblk`, `tune2fs`/`resize2fs -P` and `ntfsresize --info`. A failed measurement counts as full with no minimum.
   - `engine::facts::gather` collects every preflight fact. GRUB vendor: the only one, or the one named like BootCurrent's entry; refused if that can't be told.
   - A target file maps PARTUUIDs to `{start, len}` in sectors. `probe --target-template` prints the current layout to start from.
-- [ ] **10b.2** `bootshift apply <disk> <target.json>`: the prepare step, in order.
-  - Check everything.
-  - Write the journal and verify it reads back through the raw device.
-  - Copy the kernel and initramfs, back up the table with `sfdisk -d`.
-  - Install the GRUB redirect, then set the boot order. Each step is undone if a later one fails.
-- [ ] **10b.3** `bootshift recover` (PID 1) and `bootshift resume` (from a live USB).
+- [~] **10b.2** (written; needs a VM run to prove) `bootshift apply <disk> <target.json> [--yes] [--init <static binary>]`.
+  - Plans and runs every check. Without `--yes` it stops, having changed nothing.
+  - Refuses an `--init` binary that isn't static.
+  - `engine::prepare`, in order:
+    1. Copy vmlinuz, build and copy the initramfs.
+    2. Capture swap UUIDs and labels (`blkid`) and the original BootOrder.
+    3. Write the journal with a random run ID, then read it back through the raw disk.
+    4. Back up the table with `sfdisk --dump`, and save `recovery-args.txt`.
+    5. Install the GRUB redirect, then set the boot order (the redirect is undone if this fails).
+- [x] **10b.3** Recovery (PID 1) and `bootshift resume` (from a live USB): see 10.2 and 10.8.
 
 ### Phase 11 — Crash and boot test suites (VM)
 
