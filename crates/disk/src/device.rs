@@ -38,6 +38,13 @@ pub enum DiskError {
         #[source]
         source: std::io::Error,
     },
+
+    #[error("can't open {path}")]
+    Open {
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 pub(crate) fn check_geometry(len_bytes: u64, block_size: u32) -> Result<(), DiskError> {
@@ -53,13 +60,13 @@ pub(crate) fn check_geometry(len_bytes: u64, block_size: u32) -> Result<(), Disk
     }
 }
 
-/// Checks alignment and bounds, and returns the byte range to touch in an in-memory buffer.
-pub(crate) fn checked_range(
+/// Checks alignment and bounds, and returns the end offset of the access.
+pub(crate) fn check_access(
     offset: u64,
     len: usize,
     device_len: u64,
     block_size: u32,
-) -> Result<Range<usize>, DiskError> {
+) -> Result<u64, DiskError> {
     let len = len as u64;
     let block = u64::from(block_size);
     if offset % block != 0 || len % block != 0 {
@@ -70,13 +77,24 @@ pub(crate) fn checked_range(
         });
     }
     match offset.checked_add(len) {
-        Some(end) if end <= device_len => Ok(offset as usize..end as usize),
+        Some(end) if end <= device_len => Ok(end),
         _ => Err(DiskError::OutOfBounds {
             offset,
             len,
             device_len,
         }),
     }
+}
+
+/// Checks alignment and bounds, and returns the byte range to touch in an in-memory buffer.
+pub(crate) fn checked_range(
+    offset: u64,
+    len: usize,
+    device_len: u64,
+    block_size: u32,
+) -> Result<Range<usize>, DiskError> {
+    let end = check_access(offset, len, device_len, block_size)?;
+    Ok(offset as usize..end as usize)
 }
 
 #[cfg(test)]

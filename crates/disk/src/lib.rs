@@ -8,6 +8,7 @@ mod faulty_disk;
 mod gpt;
 mod journal_store;
 mod mem_disk;
+mod real_device;
 
 pub use crash_disk::{CrashDisk, PendingWrites};
 pub use device::{BlockDevice, DiskError};
@@ -15,3 +16,4 @@ pub use faulty_disk::FaultyDisk;
 pub use gpt::{GptEntry, GptError, GptImage};
 pub use journal_store::{FileExtent, Journal, JournalError, JournalFile, OpenedJournal};
 pub use mem_disk::MemDisk;
+pub use real_device::{Access, RealDevice};

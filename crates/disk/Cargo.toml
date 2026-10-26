@@ -11,7 +11,11 @@ repository.workspace = true
 [dependencies]
 bootshift-core.workspace = true
 gptman.workspace = true
+rustix.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
