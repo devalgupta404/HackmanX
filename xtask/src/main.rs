@@ -82,6 +82,10 @@ enum Task {
         /// target promotes the synced leg.
         #[arg(long)]
         mirror: bool,
+        /// Rehearsal: after the copy, take a writable dm-snapshot of the replica and prove it is a
+        /// testable copy whose writes never touch the replica.
+        #[arg(long)]
+        rehearse: bool,
     },
 }
 
@@ -102,7 +106,8 @@ fn main() -> Result<()> {
             live,
             reshape,
             mirror,
-        } => migrate_rig(&paths, data_mib, live, reshape, mirror),
+            rehearse,
+        } => migrate_rig(&paths, data_mib, live, reshape, mirror, rehearse),
     }
 }
 
@@ -596,10 +601,20 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
 /// over a real TCP link, then proves the target is byte-identical and its filesystem mounts intact.
 /// The link runs through the host loopback: the target forwards a host port to its receiver, and the
 /// source reaches it as `10.0.2.2:<port>` (its view of the host). Nothing touches a real disk.
-fn migrate_rig(paths: &Paths, data_mib: u64, live: bool, reshape: bool, mirror: bool) -> Result<()> {
+fn migrate_rig(
+    paths: &Paths,
+    data_mib: u64,
+    live: bool,
+    reshape: bool,
+    mirror: bool,
+    rehearse: bool,
+) -> Result<()> {
     prepare_vm(paths, false)?;
     if mirror {
         return migrate_mirror_rig(paths, data_mib);
+    }
+    if rehearse {
+        return migrate_rehearse_rig(paths, data_mib);
     }
     // Live mode needs the eBPF tracker, which libbpf ties to glibc, so it uses the dynamic binary;
     // the plain copy and reshape use the static musl binary.
@@ -997,6 +1012,121 @@ fn migrate_mirror_rig(paths: &Paths, data_mib: u64) -> Result<()> {
     println!("  built an LVM volume on the source and mirrored it onto the target over nvme-tcp");
     println!("  synced the raid1 legs, stood the source down, and promoted the target leg");
     println!("  the promoted target volume mounts with every file intact");
+    Ok(())
+}
+
+/// Rehearsal: migrate a disk, then take a writable dm-snapshot of the replica and prove it is a
+/// testable copy of the migrated data whose own writes never reach the replica.
+fn migrate_rehearse_rig(paths: &Paths, data_mib: u64) -> Result<()> {
+    let migrate_bin = build_musl_migrate(paths)?;
+    let data_bytes = data_mib * (1 << 20);
+    let scratch_bytes = 64u64 * (1 << 20);
+
+    let src_root = overlay_of(paths, &paths.prepared(), "mig-src.qcow2")?;
+    let tgt_root = overlay_of(paths, &paths.prepared(), "mig-tgt.qcow2")?;
+    let src_data = paths.out.join("mig-src-data.raw");
+    let tgt_data = paths.out.join("mig-tgt-data.raw");
+    let tgt_scratch = paths.out.join("mig-tgt-scratch.raw");
+    let tgt_cow = paths.out.join("mig-tgt-cow.raw");
+    create_raw(&src_data, data_bytes)?;
+    create_raw(&tgt_data, data_bytes)?;
+    create_raw(&tgt_scratch, scratch_bytes)?;
+    create_raw(&tgt_cow, data_bytes)?;
+
+    let display = display_from_env();
+    let mig_port = guest::free_port()?;
+
+    println!("booting the target guest (receiver + rehearsal)…");
+    let mut target = Guest::launch_opts(paths, &LaunchOpts {
+        disk: &tgt_root,
+        display,
+        extra_disks: &[
+            ExtraDisk { image: tgt_data.clone(), serial: "tgtdata".into() },
+            ExtraDisk { image: tgt_scratch.clone(), serial: "tgtscr".into() },
+            ExtraDisk { image: tgt_cow.clone(), serial: "tgtcow".into() },
+        ],
+        extra_hostfwd: &[(mig_port, 9876)],
+    })?;
+    target.wait_ssh()?;
+    println!("booting the source guest (the sender)…");
+    let mut source = Guest::launch_opts(paths, &LaunchOpts {
+        disk: &src_root,
+        display,
+        extra_disks: &[ExtraDisk { image: src_data.clone(), serial: "srcdata".into() }],
+        extra_hostfwd: &[],
+    })?;
+    source.wait_ssh()?;
+
+    let src_dev = "/dev/disk/by-id/virtio-srcdata";
+    let tgt_dev = "/dev/disk/by-id/virtio-tgtdata";
+    let scr_dev = "/dev/disk/by-id/virtio-tgtscr";
+    let cow_dev = "/dev/disk/by-id/virtio-tgtcow";
+
+    println!("filling the source with a filesystem and checksummed files…");
+    source.ssh(&format!("sudo mkfs.ext4 -q -F {src_dev}"))?;
+    source.ssh(&format!(
+        "sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d \
+         && for i in $(seq 1 {}); do sudo dd if=/dev/urandom of=/mnt/d/file$i bs=1M count=8 status=none; done \
+         && sudo sh -c 'cd /mnt/d && sha256sum file* > MANIFEST' && sudo sync && sudo umount /mnt/d",
+        (data_mib / 16).max(1),
+    ))?;
+
+    println!("installing the migrate binary in both guests…");
+    source.scp(&migrate_bin, "/tmp/bootshift-migrate")?;
+    source.ssh("sudo install -m0755 /tmp/bootshift-migrate /usr/local/sbin/bootshift-migrate")?;
+    target.scp(&migrate_bin, "/tmp/bootshift-migrate")?;
+    target.ssh("sudo install -m0755 /tmp/bootshift-migrate /usr/local/sbin/bootshift-migrate")?;
+
+    println!("migrating the source to the replica…");
+    target.ssh(&format!(
+        "sudo systemctl reset-failed migrate-recv 2>/dev/null; true; \
+         sudo systemd-run --unit=migrate-recv --collect /bin/sh -c \
+         'exec /usr/local/sbin/bootshift-migrate receive --data {tgt_dev} --scratch {scr_dev} \
+          --listen 0.0.0.0:9876 > /tmp/recv.log 2>&1'"
+    ))?;
+    target.ssh("for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q ':9876' && exit 0; sleep 0.5; done; exit 1")
+        .context("the receiver never started listening")?;
+    let sent = source.ssh(&format!(
+        "sudo /usr/local/sbin/bootshift-migrate send --source {src_dev} --to 10.0.2.2:{mig_port}"
+    ))?;
+    if !sent.contains("copied and verified") {
+        bail!("the sender did not report success:\n{sent}");
+    }
+    target.ssh("for i in $(seq 1 30); do systemctl is-active migrate-recv >/dev/null 2>&1 || break; sleep 1; done; true")?;
+
+    println!("rehearsing: snapshot the replica and test it…");
+    target.ssh("sudo modprobe dm_snapshot 2>&1; true")?;
+    let rehearse = target.ssh(&format!(
+        "sudo /usr/local/sbin/bootshift-migrate rehearse --data {tgt_dev} --cow {cow_dev} --name reh \
+         && sudo mkdir -p /mnt/snap && sudo mount /dev/mapper/reh-snap /mnt/snap \
+         && (cd /mnt/snap && sudo sha256sum --quiet -c MANIFEST && echo SNAP-FILES-OK) \
+         && echo 'rehearsal-only change' | sudo tee /mnt/snap/rehearsal-note >/dev/null \
+         && sudo umount /mnt/snap"
+    ))?;
+    println!("{}", rehearse.trim());
+    if !rehearse.contains("SNAP-FILES-OK") {
+        bail!("the rehearsal snapshot did not carry the migrated files:\n{rehearse}");
+    }
+
+    println!("ending the rehearsal and checking the replica is untouched…");
+    let verify = target.ssh(&format!(
+        "sudo /usr/local/sbin/bootshift-migrate rehearse --data {tgt_dev} --name reh --end \
+         && sudo mkdir -p /mnt/d && sudo mount {tgt_dev} /mnt/d \
+         && (cd /mnt/d && sudo sha256sum --quiet -c MANIFEST && echo REPLICA-CLEAN) \
+         && (test ! -e /mnt/d/rehearsal-note && echo NO-REHEARSAL-LEAK); sudo umount /mnt/d"
+    ))?;
+    println!("{}", verify.trim());
+    if !verify.contains("REPLICA-CLEAN") || !verify.contains("NO-REHEARSAL-LEAK") {
+        bail!("the replica was disturbed by the rehearsal:\n{verify}");
+    }
+
+    source.poweroff()?;
+    target.poweroff()?;
+    println!();
+    println!("REHEARSE RIG PASSED");
+    println!("  migrated a {data_mib} MiB disk, then snapshotted the replica");
+    println!("  the snapshot carried every migrated file and was writable");
+    println!("  the rehearsal's own write never reached the replica");
     Ok(())
 }
 
