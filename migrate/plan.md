@@ -322,7 +322,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
   - `bootshift-migrate receive`;
   - `send <pairing-code>`;
   - `status`, `rehearse`, `cutover`, `rollback`, `verify`, `finalize`.
-- [ ] **12.2 `bootshiftd` D-Bus methods** for the sender side, plus GUI screens built from the core types: churn chart, forecast, cutover button, receipt.
+- [~] **12.2 `bootshiftd` D-Bus methods** for the sender side, plus GUI screens built from the core types: churn chart, forecast, cutover button, receipt.
 
 ### Phase 13 — Test suites
 
