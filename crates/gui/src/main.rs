@@ -34,11 +34,17 @@ use crate::demo::DemoBackend;
 
 fn main() -> anyhow::Result<()> {
     let backend = choose_backend(std::env::args().any(|arg| arg == "--demo"));
+    // The migration demo runs on the box's own 1366x768 screen; a smaller window fits it whole.
+    let size = if std::env::var_os("BOOTSHIFT_MIGRATE_DEMO").is_some() {
+        [1120.0, 720.0]
+    } else {
+        [1440.0, 900.0]
+    };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("BootShift")
             .with_app_id("org.bootshift.BootShift")
-            .with_inner_size([1440.0, 900.0])
+            .with_inner_size(size)
             .with_min_inner_size([720.0, 560.0]),
         ..eframe::NativeOptions::default()
     };

@@ -87,6 +87,15 @@ enum Task {
         #[arg(long)]
         rehearse: bool,
     },
+    /// Hand-driven migration demo: boot two guests (this machine and a blank new one) in windows,
+    /// keep the source live and churning, open a terminal into each, and launch the BootShift GUI
+    /// on its migration screen. You check the disks in each terminal, press Start migration in the
+    /// GUI, and check again: the new machine ends byte-identical with a signed receipt.
+    MigrateDemo {
+        /// Size of the data disk to migrate, in MiB.
+        #[arg(long, default_value_t = 256)]
+        data_mib: u64,
+    },
 }
 
 fn main() -> Result<()> {
@@ -108,6 +117,7 @@ fn main() -> Result<()> {
             mirror,
             rehearse,
         } => migrate_rig(&paths, data_mib, live, reshape, mirror, rehearse),
+        Task::MigrateDemo { data_mib } => migrate_demo(&paths, data_mib),
     }
 }
 
@@ -643,24 +653,39 @@ fn migrate_rig(
     let mig_port = guest::free_port()?;
 
     println!("booting the target guest (the receiver)…");
-    let mut target = Guest::launch_opts(paths, &LaunchOpts {
-        disk: &tgt_root,
-        display,
-        extra_disks: &[
-            ExtraDisk { image: tgt_data.clone(), serial: "tgtdata".into() },
-            ExtraDisk { image: tgt_scratch.clone(), serial: "tgtscr".into() },
-        ],
-        extra_hostfwd: &[(mig_port, 9876)],
-    })?;
+    let mut target = Guest::launch_opts(
+        paths,
+        &LaunchOpts {
+            disk: &tgt_root,
+            display,
+            extra_disks: &[
+                ExtraDisk {
+                    image: tgt_data.clone(),
+                    serial: "tgtdata".into(),
+                },
+                ExtraDisk {
+                    image: tgt_scratch.clone(),
+                    serial: "tgtscr".into(),
+                },
+            ],
+            extra_hostfwd: &[(mig_port, 9876)],
+        },
+    )?;
     target.wait_ssh()?;
 
     println!("booting the source guest (the sender)…");
-    let mut source = Guest::launch_opts(paths, &LaunchOpts {
-        disk: &src_root,
-        display,
-        extra_disks: &[ExtraDisk { image: src_data.clone(), serial: "srcdata".into() }],
-        extra_hostfwd: &[],
-    })?;
+    let mut source = Guest::launch_opts(
+        paths,
+        &LaunchOpts {
+            disk: &src_root,
+            display,
+            extra_disks: &[ExtraDisk {
+                image: src_data.clone(),
+                serial: "srcdata".into(),
+            }],
+            extra_hostfwd: &[],
+        },
+    )?;
     source.wait_ssh()?;
 
     let src_dev = "/dev/disk/by-id/virtio-srcdata";
@@ -686,7 +711,9 @@ fn migrate_rig(
         if live {
             // Keep the source mounted and churning: the tracker captures the writes, and the freeze
             // cutover plus the receipt prove the target equals the frozen image.
-            source.ssh(&format!("sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd}"))?;
+            source.ssh(&format!(
+                "sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd}"
+            ))?;
         } else {
             source.ssh(&format!(
                 "sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd} && sudo umount /mnt/d"
@@ -712,7 +739,14 @@ fn migrate_rig(
         .context("the receiver never started listening")?;
 
     if reshape {
-        migrate_reshape(&mut source, &mut target, src_dev, tgt_dev, mig_port, data_mib)?;
+        migrate_reshape(
+            &mut source,
+            &mut target,
+            src_dev,
+            tgt_dev,
+            mig_port,
+            data_mib,
+        )?;
     } else if live {
         migrate_live(&mut source, &mut target, src_dev, tgt_dev, mig_port)?;
     } else {
@@ -725,7 +759,10 @@ fn migrate_rig(
     println!("MIGRATE RIG PASSED");
     println!("  filled a {data_mib} MiB data disk on the source machine");
     if reshape {
-        println!("  migrated it onto a {}x larger disk on a second machine", 3);
+        println!(
+            "  migrated it onto a {}x larger disk on a second machine",
+            3
+        );
         println!("  finalize grew the partition and ext4 filesystem to fill the new disk");
         println!("  the grown filesystem is clean and every file still checks out");
     } else if live {
@@ -736,6 +773,214 @@ fn migrate_rig(
         println!("  migrated it to a blank disk on a second machine over a real TCP link");
         println!("  the target is byte-for-byte identical, and its filesystem mounts intact");
     }
+    Ok(())
+}
+
+/// Hand-driven migration demo: set the stage, then hand the controls to a person. Boots the two
+/// guests in windows, fills the source and keeps it live and churning, installs the migrate binary,
+/// starts the receiver, opens a terminal into each guest, and launches the BootShift GUI on its
+/// migration screen. The GUI's "Start migration" writes a go-file a background runner waits for; the
+/// runner performs the real live migration and drops the receiver's signed receipt where the GUI
+/// picks it up. Nothing touches a real disk: both machines are QEMU guests on virtio data disks.
+fn migrate_demo(paths: &Paths, data_mib: u64) -> Result<()> {
+    prepare_vm(paths, false)?;
+    let migrate_bin = build_migrate_ebpf(paths)?;
+    println!("building the desktop GUI…");
+    run(Command::new("cargo").current_dir(&paths.repo).args([
+        "build",
+        "-p",
+        "bootshift-gui",
+        "--release",
+    ]))?;
+    let gui = paths.repo.join("target/release/bootshift-gui");
+
+    let data_bytes = data_mib * (1 << 20);
+    let scratch_bytes = 64u64 * (1 << 20);
+    let src_root = overlay_of(paths, &paths.prepared(), "mig-demo-src.qcow2")?;
+    let tgt_root = overlay_of(paths, &paths.prepared(), "mig-demo-tgt.qcow2")?;
+    let src_data = paths.out.join("mig-demo-src-data.raw");
+    let tgt_data = paths.out.join("mig-demo-tgt-data.raw");
+    let tgt_scratch = paths.out.join("mig-demo-tgt-scratch.raw");
+    create_raw(&src_data, data_bytes)?;
+    create_raw(&tgt_data, data_bytes)?;
+    create_raw(&tgt_scratch, scratch_bytes)?;
+
+    let mig_port = guest::free_port()?;
+
+    println!("booting the new machine (the target)…");
+    let mut target = Guest::launch_opts(
+        paths,
+        &LaunchOpts {
+            disk: &tgt_root,
+            display: true,
+            extra_disks: &[
+                ExtraDisk {
+                    image: tgt_data.clone(),
+                    serial: "tgtdata".into(),
+                },
+                ExtraDisk {
+                    image: tgt_scratch.clone(),
+                    serial: "tgtscr".into(),
+                },
+            ],
+            extra_hostfwd: &[(mig_port, 9876)],
+        },
+    )?;
+    target.wait_ssh()?;
+
+    println!("booting this machine (the source)…");
+    let mut source = Guest::launch_opts(
+        paths,
+        &LaunchOpts {
+            disk: &src_root,
+            display: true,
+            extra_disks: &[ExtraDisk {
+                image: src_data.clone(),
+                serial: "srcdata".into(),
+            }],
+            extra_hostfwd: &[],
+        },
+    )?;
+    source.wait_ssh()?;
+
+    let src_dev = "/dev/disk/by-id/virtio-srcdata";
+    let tgt_dev = "/dev/disk/by-id/virtio-tgtdata";
+    let scr_dev = "/dev/disk/by-id/virtio-tgtscr";
+
+    println!("filling the source with checksummed files and keeping it mounted…");
+    let files_cmd = format!(
+        "for i in $(seq 1 {}); do sudo dd if=/dev/urandom of=/mnt/d/file$i bs=1M count=8 status=none; done \
+         && sudo sh -c 'cd /mnt/d && sha256sum file* > MANIFEST' && sudo sync",
+        (data_mib / 16).max(1),
+    );
+    source.ssh(&format!("sudo mkfs.ext4 -q -F {src_dev}"))?;
+    source.ssh(&format!(
+        "sudo mkdir -p /mnt/d && sudo mount {src_dev} /mnt/d && {files_cmd}"
+    ))?;
+
+    println!("installing the migrate binary in both machines…");
+    source.scp(&migrate_bin, "/tmp/bootshift-migrate")?;
+    source.ssh("sudo install -m0755 /tmp/bootshift-migrate /usr/local/sbin/bootshift-migrate")?;
+    target.scp(&migrate_bin, "/tmp/bootshift-migrate")?;
+    target.ssh("sudo install -m0755 /tmp/bootshift-migrate /usr/local/sbin/bootshift-migrate")?;
+
+    println!("starting the receiver on the new machine…");
+    target.ssh(&format!(
+        "sudo systemctl reset-failed migrate-recv 2>/dev/null; true; \
+         sudo systemd-run --unit=migrate-recv --collect /bin/sh -c \
+         'exec /usr/local/sbin/bootshift-migrate receive --data {tgt_dev} --scratch {scr_dev} \
+          --listen 0.0.0.0:9876 --receipt /tmp/receipt.json > /tmp/recv.log 2>&1'"
+    ))?;
+    target.ssh("for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q ':9876' && exit 0; sleep 0.5; done; echo 'receiver never listened'; exit 1")
+        .context("the receiver never started listening")?;
+
+    // Keep the source changing so the live migration has real churn to chase while the person reads
+    // the disks. The send stops this unit when it freezes for cutover.
+    source.ssh(
+        "sudo systemctl reset-failed migrate-churn 2>/dev/null; true; \
+         sudo systemd-run --unit=migrate-churn --collect /bin/sh -c \
+         'while true; do dd if=/dev/urandom of=/mnt/d/churn$((RANDOM%6)) bs=256k count=1 \
+          conv=notrunc status=none; sync /mnt/d; sleep 0.4; done'",
+    )?;
+
+    let src_port = source.ssh_port();
+    let tgt_port = target.ssh_port();
+    let key = paths.ssh_key.clone();
+    let ssh_opts = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR";
+
+    // File handshake with the GUI: it writes `go` on Start migration; the runner performs the real
+    // migration and drops the receiver's signed receipt at `receipt` for the GUI to display.
+    let go = paths.out.join("migrate-demo.go");
+    let receipt = paths.out.join("migrate-demo-receipt.json");
+    let _ = std::fs::remove_file(&go);
+    let _ = std::fs::remove_file(&receipt);
+
+    let runner = paths.out.join("migrate-demo-run.sh");
+    std::fs::write(
+        &runner,
+        format!(
+            "#!/bin/bash\n\
+         set -u\n\
+         while [ ! -e '{go}' ]; do sleep 0.3; done\n\
+         rm -f '{go}'\n\
+         echo 'running the live migration…'\n\
+         ssh -p {src_port} -i {key} {ssh_opts} ubuntu@127.0.0.1 \
+           \"sudo /usr/local/sbin/bootshift-migrate send --source {src_dev} --track {src_dev} \
+             --to 10.0.2.2:{mig_port} --freeze /mnt/d --budget-ms 2000; \
+             sudo systemctl stop migrate-churn 2>/dev/null; true\"\n\
+         ssh -p {tgt_port} -i {key} {ssh_opts} ubuntu@127.0.0.1 \
+           'for i in $(seq 1 30); do systemctl is-active migrate-recv >/dev/null 2>&1 || break; sleep 1; done'\n\
+         scp -P {tgt_port} -i {key} {ssh_opts} ubuntu@127.0.0.1:/tmp/receipt.json '{receipt}.part'\n\
+         mv '{receipt}.part' '{receipt}'\n\
+         echo 'migration done; receipt at {receipt}'\n",
+            go = go.display(),
+            key = key.display(),
+            receipt = receipt.display(),
+        ),
+    )?;
+    Command::new("bash")
+        .arg(&runner)
+        .spawn()
+        .context("starting the migration runner")?;
+
+    // A terminal into each machine, for the person to check the disks by hand.
+    open_guest_terminal("SOURCE — this machine", src_port, &key)?;
+    open_guest_terminal("TARGET — the new machine", tgt_port, &key)?;
+
+    // The GUI on its migration screen. It talks to no helper (the screen is self-contained), so the
+    // demo backend is fine; the migration env points it at the handshake files.
+    Command::new(&gui)
+        .arg("--demo")
+        .env("BOOTSHIFT_MIGRATE_DEMO", "1")
+        .env("BOOTSHIFT_MIGRATE_GO", &go)
+        .env("BOOTSHIFT_MIGRATE_RECEIPT", &receipt)
+        .spawn()
+        .context("launching the GUI")?;
+
+    source.leak();
+    target.leak();
+
+    println!("\n================  Migration demo is ready  ================\n");
+    println!(
+        "Two machines are up in their own windows, plus a terminal into each and the BootShift"
+    );
+    println!("window on its migration screen. The source is live and changing the whole time.\n");
+    println!("1) BEFORE — in the SOURCE terminal, show what is being migrated:");
+    println!("     sudo cat /mnt/d/MANIFEST");
+    println!("   and in the TARGET terminal, show the new disk is blank:");
+    println!("     sudo sha256sum {tgt_dev}\n");
+    println!("2) In the BootShift window, press \"Start migration\" and watch it commit.\n");
+    println!("3) AFTER — in the TARGET terminal, prove the new machine is identical:");
+    println!(
+        "     sudo /usr/local/sbin/bootshift-migrate verify-receipt /tmp/receipt.json --target {tgt_dev}"
+    );
+    println!(
+        "     sudo mkdir -p /mnt/p && sudo mount {tgt_dev} /mnt/p && (cd /mnt/p && sudo sha256sum -c MANIFEST)\n"
+    );
+    println!("Stop everything when done:");
+    println!("     pkill -f mig-demo; pkill -f bootshift-gui; pkill -f migrate-demo-run");
+    println!("==========================================================\n");
+    Ok(())
+}
+
+/// Opens a titled terminal with an interactive SSH shell into a guest, for a hand-driven demo.
+fn open_guest_terminal(title: &str, port: u16, key: &Path) -> Result<()> {
+    Command::new("gnome-terminal")
+        .arg(format!("--title={title}"))
+        .arg("--")
+        .args(["ssh", "-p", &port.to_string(), "-i"])
+        .arg(key)
+        .args([
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "LogLevel=ERROR",
+            "ubuntu@127.0.0.1",
+        ])
+        .spawn()
+        .with_context(|| format!("opening the {title} terminal"))?;
     Ok(())
 }
 
@@ -921,20 +1166,32 @@ fn migrate_mirror_rig(paths: &Paths, data_mib: u64) -> Result<()> {
     let nvme_port = guest::free_port()?;
 
     println!("booting the target guest (nvme-tcp export)…");
-    let mut target = Guest::launch_opts(paths, &LaunchOpts {
-        disk: &tgt_root,
-        display,
-        extra_disks: &[ExtraDisk { image: tgt_data.clone(), serial: "tgtdata".into() }],
-        extra_hostfwd: &[(nvme_port, 4420)],
-    })?;
+    let mut target = Guest::launch_opts(
+        paths,
+        &LaunchOpts {
+            disk: &tgt_root,
+            display,
+            extra_disks: &[ExtraDisk {
+                image: tgt_data.clone(),
+                serial: "tgtdata".into(),
+            }],
+            extra_hostfwd: &[(nvme_port, 4420)],
+        },
+    )?;
     target.wait_ssh()?;
     println!("booting the source guest (LVM mirror)…");
-    let mut source = Guest::launch_opts(paths, &LaunchOpts {
-        disk: &src_root,
-        display,
-        extra_disks: &[ExtraDisk { image: src_data.clone(), serial: "srcdata".into() }],
-        extra_hostfwd: &[],
-    })?;
+    let mut source = Guest::launch_opts(
+        paths,
+        &LaunchOpts {
+            disk: &src_root,
+            display,
+            extra_disks: &[ExtraDisk {
+                image: src_data.clone(),
+                serial: "srcdata".into(),
+            }],
+            extra_hostfwd: &[],
+        },
+    )?;
     source.wait_ssh()?;
 
     let src_dev = "/dev/disk/by-id/virtio-srcdata";
@@ -963,23 +1220,27 @@ fn migrate_mirror_rig(paths: &Paths, data_mib: u64) -> Result<()> {
         // Extract ONLY the nvme module files (about a megabyte) from the 64 MiB package, not all of
         // linux-modules-extra (230 MiB would fill the small root). Retry the download (it crosses a
         // slow NAT) and verify the target module actually landed, so a partial download can't pass.
-        guest.ssh(
-            "cd /tmp && rm -f linux-modules-extra-*.deb; k=$(uname -r); \
+        guest
+            .ssh(
+                "cd /tmp && rm -f linux-modules-extra-*.deb; k=$(uname -r); \
              for t in 1 2 3 4; do apt-get download linux-modules-extra-$k && break; sleep 2; done; \
              dpkg-deb --fsys-tarfile linux-modules-extra-*.deb \
                | sudo tar -x -C / --wildcards './lib/modules/*/kernel/drivers/nvme/*'; \
              rm -f linux-modules-extra-*.deb; sudo depmod -a; \
              test -f /lib/modules/$k/kernel/drivers/nvme/target/nvmet-tcp.ko \
                && test -f /lib/modules/$k/kernel/drivers/nvme/host/nvme-tcp.ko && echo MODULES-OK",
-        )
-        .context("extracting the nvme-tcp modules into the guest")?;
+            )
+            .context("extracting the nvme-tcp modules into the guest")?;
         guest.scp(&migrate_bin, "/tmp/bootshift-migrate")?;
-        guest.ssh("sudo install -m0755 /tmp/bootshift-migrate /usr/local/sbin/bootshift-migrate")?;
+        guest
+            .ssh("sudo install -m0755 /tmp/bootshift-migrate /usr/local/sbin/bootshift-migrate")?;
     }
     // Load by the leaf module so modprobe pulls each dependency itself (nvmet_tcp pulls nvmet;
     // nvme_tcp pulls nvme_fabrics and nvme_core).
     target
-        .ssh("sudo depmod -a; sudo modprobe nvmet_tcp && lsmod | grep -q nvmet_tcp && echo NVMET-OK")
+        .ssh(
+            "sudo depmod -a; sudo modprobe nvmet_tcp && lsmod | grep -q nvmet_tcp && echo NVMET-OK",
+        )
         .context("loading nvmet_tcp on the target")?;
     source
         .ssh("sudo depmod -a; sudo modprobe nvme_tcp && sudo modprobe dm_raid && lsmod | grep -q nvme_tcp && echo NVME-OK")
@@ -1058,24 +1319,42 @@ fn migrate_rehearse_rig(paths: &Paths, data_mib: u64) -> Result<()> {
     let mig_port = guest::free_port()?;
 
     println!("booting the target guest (receiver + rehearsal)…");
-    let mut target = Guest::launch_opts(paths, &LaunchOpts {
-        disk: &tgt_root,
-        display,
-        extra_disks: &[
-            ExtraDisk { image: tgt_data.clone(), serial: "tgtdata".into() },
-            ExtraDisk { image: tgt_scratch.clone(), serial: "tgtscr".into() },
-            ExtraDisk { image: tgt_cow.clone(), serial: "tgtcow".into() },
-        ],
-        extra_hostfwd: &[(mig_port, 9876)],
-    })?;
+    let mut target = Guest::launch_opts(
+        paths,
+        &LaunchOpts {
+            disk: &tgt_root,
+            display,
+            extra_disks: &[
+                ExtraDisk {
+                    image: tgt_data.clone(),
+                    serial: "tgtdata".into(),
+                },
+                ExtraDisk {
+                    image: tgt_scratch.clone(),
+                    serial: "tgtscr".into(),
+                },
+                ExtraDisk {
+                    image: tgt_cow.clone(),
+                    serial: "tgtcow".into(),
+                },
+            ],
+            extra_hostfwd: &[(mig_port, 9876)],
+        },
+    )?;
     target.wait_ssh()?;
     println!("booting the source guest (the sender)…");
-    let mut source = Guest::launch_opts(paths, &LaunchOpts {
-        disk: &src_root,
-        display,
-        extra_disks: &[ExtraDisk { image: src_data.clone(), serial: "srcdata".into() }],
-        extra_hostfwd: &[],
-    })?;
+    let mut source = Guest::launch_opts(
+        paths,
+        &LaunchOpts {
+            disk: &src_root,
+            display,
+            extra_disks: &[ExtraDisk {
+                image: src_data.clone(),
+                serial: "srcdata".into(),
+            }],
+            extra_hostfwd: &[],
+        },
+    )?;
     source.wait_ssh()?;
 
     let src_dev = "/dev/disk/by-id/virtio-srcdata";

@@ -248,6 +248,12 @@ impl App {
             now: 0.0,
         };
         app.worker.send(Request::ListDisks);
+        // When the host demo runner launches the app to drive a real migration, open straight on
+        // the migration screen instead of the goal launcher.
+        if std::env::var_os("BOOTSHIFT_MIGRATE_DEMO").is_some() {
+            app.screen = Screen::Migrate;
+            app.status = "Replicating this machine onto the new one.".to_string();
+        }
         app
     }
 
@@ -778,6 +784,7 @@ impl App {
         self.step_run();
         if self.screen == Screen::Migrate {
             self.migrate.tick(self.now);
+            self.migrate.poll();
         }
 
         let mut actions = Vec::new();
