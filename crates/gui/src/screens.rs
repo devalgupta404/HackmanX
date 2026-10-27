@@ -25,6 +25,7 @@ pub fn show(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
         Screen::Checks => checks(ui, app, actions, narrow),
         Screen::Restart => restart(ui, app, narrow),
         Screen::Done => done(ui, app, narrow),
+        Screen::Migrate => {}
     }
 }
 
@@ -425,29 +426,25 @@ fn home(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
     );
     goal_card(ui, app, Goal::InstallOs, true, actions);
     ui.add_space(12.0);
+    goal_card(ui, app, Goal::Migrate, false, actions);
+    ui.add_space(12.0);
     let middle = [
         Goal::GiveSpace,
         Goal::FreeSpace,
         Goal::MovePartition,
         Goal::CleanUp,
     ];
-    if narrow {
-        for goal in middle {
-            goal_card(ui, app, goal, false, actions);
-            ui.add_space(12.0);
-        }
-    } else {
-        // `columns` puts `item_spacing.x` between the cards, and `show` zeroed it, so without
-        // this the two borders touch and read as one stuck-together box.
-        ui.spacing_mut().item_spacing.x = 12.0;
-        for pair in middle.chunks(2) {
-            ui.columns(2, |cols| {
-                for (i, &goal) in pair.iter().enumerate() {
-                    goal_card(&mut cols[i], app, goal, false, actions);
-                }
-            });
-            ui.add_space(12.0);
-        }
+    // `columns` puts `item_spacing.x` between the cards, and `show` zeroed it, so without this the
+    // two borders touch and read as one stuck-together box. Two columns keep every goal, Migrate
+    // included, on one screen at the minimum window height.
+    ui.spacing_mut().item_spacing.x = 12.0;
+    for pair in middle.chunks(2) {
+        ui.columns(2, |cols| {
+            for (i, &goal) in pair.iter().enumerate() {
+                goal_card(&mut cols[i], app, goal, false, actions);
+            }
+        });
+        ui.add_space(12.0);
     }
     goal_card(ui, app, Goal::DoItMyself, false, actions);
 }
@@ -458,6 +455,7 @@ fn goal_colour(goal: Goal) -> Color32 {
         Goal::GiveSpace => Color32::from_rgb(0x38, 0xb2, 0xa8),
         Goal::FreeSpace => Color32::from_rgb(0x4d, 0x7e, 0xf2),
         Goal::MovePartition => Color32::from_rgb(0xb0, 0x7c, 0xf5),
+        Goal::Migrate => theme::VERIFIED,
         Goal::CleanUp | Goal::DoItMyself => theme::DIM,
     }
 }
@@ -574,6 +572,10 @@ fn goal_heading(goal: Goal) -> (&'static str, &'static str) {
             "Pick one and where it should go. Its contents go nowhere, only its place.",
         ),
         Goal::CleanUp => ("Clean up a drive", "Remove a partition you no longer need."),
+        Goal::Migrate => (
+            "Migrate to new hardware",
+            "Replicate this machine onto the new one, then cut over with a signed copy.",
+        ),
         Goal::DoItMyself => ("Arrange the disk", ""),
     }
 }
@@ -584,7 +586,7 @@ fn goal_applies(goal: Goal, content: Content) -> bool {
         Goal::GiveSpace => content.can_grow(),
         Goal::FreeSpace | Goal::InstallOs => content.can_shrink(),
         Goal::MovePartition => content.can_move(),
-        Goal::CleanUp | Goal::DoItMyself => false,
+        Goal::CleanUp | Goal::Migrate | Goal::DoItMyself => false,
     }
 }
 

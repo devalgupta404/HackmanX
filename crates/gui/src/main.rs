@@ -11,6 +11,7 @@ mod editing;
 mod format;
 mod grid;
 mod gutter;
+mod migrate;
 mod motion;
 mod protocol;
 mod readout;

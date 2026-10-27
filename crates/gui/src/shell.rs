@@ -18,6 +18,25 @@ pub fn show(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
     let narrow = width < layout::NARROW_BELOW;
     let stacked = width < layout::STACK_READOUT_BELOW;
 
+    // The migration goal is its own full-window flow: no partition rail, readout or disk.
+    if app.screen == crate::app::Screen::Migrate {
+        egui::CentralPanel::no_frame().show(ui, |ui| {
+            ui.painter().rect_filled(ui.max_rect(), 0, theme::VOID);
+            let side = if narrow { 16 } else { 40 };
+            egui::Frame::new()
+                .inner_margin(Margin::symmetric(side, 26))
+                .show(ui, |ui| {
+                    ScrollArea::vertical()
+                        .id_salt("migrate-scroll")
+                        .show(ui, |ui| {
+                            ui.set_max_width(760.0);
+                            crate::migrate::show(ui, &app.migrate, actions, narrow);
+                        });
+                });
+        });
+        return;
+    }
+
     if narrow {
         Panel::top("rail")
             .resizable(false)
@@ -531,6 +550,8 @@ fn buttons(ui: &mut Ui, app: &App, actions: &mut Vec<Action>) {
     match app.screen {
         // The home screen's actions are the goal cards themselves.
         Screen::Home => {}
+        // The migrate screen is full-window with its own controls.
+        Screen::Migrate => {}
         Screen::Arrange => {
             push(
                 ui,

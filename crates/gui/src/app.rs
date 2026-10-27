@@ -28,6 +28,8 @@ pub enum Screen {
     Checks,
     Restart,
     Done,
+    /// The migration goal's own screen, outside the partition flow.
+    Migrate,
 }
 
 impl Screen {
@@ -48,6 +50,7 @@ impl Screen {
             Screen::Checks => "Checks",
             Screen::Restart => "Restart",
             Screen::Done => "Done",
+            Screen::Migrate => "Migrate",
         }
     }
 }
@@ -62,6 +65,7 @@ pub enum Goal {
     FreeSpace,
     MovePartition,
     CleanUp,
+    Migrate,
     DoItMyself,
 }
 
@@ -73,6 +77,7 @@ impl Goal {
             Goal::FreeSpace => "Free up space from a partition",
             Goal::MovePartition => "Move a partition",
             Goal::CleanUp => "Clean up a drive",
+            Goal::Migrate => "Migrate to new hardware",
             Goal::DoItMyself => "Do it myself",
         }
     }
@@ -90,6 +95,10 @@ impl Goal {
                 "Slide one along the disk; its contents go nowhere, only its place."
             }
             Goal::CleanUp => "Remove or reformat a partition you no longer need.",
+            Goal::Migrate => {
+                "Replicate this whole machine onto new hardware while it runs, then cut over with a \
+                 signed, verified copy."
+            }
             Goal::DoItMyself => {
                 "The full disk editor: drag partitions and edges exactly where you want."
             }
@@ -111,7 +120,7 @@ fn default_goal_partition(layout: &Layout, goal: Goal) -> Option<Guid> {
         Goal::GiveSpace => largest(|p| p.content.can_grow()),
         Goal::FreeSpace | Goal::InstallOs => largest(|p| p.content.can_shrink()),
         Goal::MovePartition => largest(|p| p.content.can_move()),
-        Goal::CleanUp | Goal::DoItMyself => None,
+        Goal::CleanUp | Goal::Migrate | Goal::DoItMyself => None,
     }
 }
 
@@ -139,6 +148,8 @@ pub enum Action {
     PreviewRestart,
     CutPower,
     PlanAnother,
+    /// On the migration screen: freeze and commit the cutover.
+    MigrateCutover,
 }
 
 /// How a check row looks right now: the rows resolve one at a time, top to bottom.
@@ -194,6 +205,8 @@ pub struct App {
     done_due: Option<f64>,
     pub outcome: Option<Outcome>,
     pub save: Option<SaveDialog>,
+    /// The migration goal's own view and demo migration.
+    pub migrate: crate::migrate::MigrateView,
     now: f64,
 }
 
@@ -231,6 +244,7 @@ impl App {
             done_due: None,
             outcome: None,
             save: None,
+            migrate: crate::migrate::MigrateView::new(),
             now: 0.0,
         };
         app.worker.send(Request::ListDisks);
@@ -369,6 +383,12 @@ impl App {
     /// Opens a goal. `DoItMyself` is the editor; the others are simplified screens that build a
     /// target from one partition and an amount, and leave `Clean up` as advice for now.
     fn choose_goal(&mut self, goal: Goal) {
+        if goal == Goal::Migrate {
+            self.migrate.reset();
+            self.show(Screen::Migrate);
+            self.status = "Replicating this machine onto the new one.".to_string();
+            return;
+        }
         let Some(probed) = self.probed.clone() else {
             return;
         };
@@ -437,7 +457,7 @@ impl App {
                 };
                 editing::move_to(layout, target, guid, dest)
             }
-            Goal::CleanUp | Goal::DoItMyself => None,
+            Goal::CleanUp | Goal::Migrate | Goal::DoItMyself => None,
         }
     }
 
@@ -710,6 +730,7 @@ impl App {
                 self.start_over();
                 self.show(Screen::Arrange);
             }
+            Action::MigrateCutover => self.migrate.cutover(),
         }
     }
 
@@ -755,9 +776,15 @@ impl App {
         }
         self.step_checks();
         self.step_run();
+        if self.screen == Screen::Migrate {
+            self.migrate.tick(self.now);
+        }
 
         let mut actions = Vec::new();
         shell::show(ui, self, &mut actions);
+        if self.screen == Screen::Migrate && self.migrate.animating() {
+            ui.ctx().request_repaint_after(Duration::from_millis(60));
+        }
         if let Some(dialog) = &mut self.save {
             if !dialog.show(ui.ctx(), self.worker.is_demo()) {
                 if let Some(message) = dialog.saved_message() {

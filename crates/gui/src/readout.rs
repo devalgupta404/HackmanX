@@ -25,6 +25,7 @@ pub fn show(ui: &mut Ui, app: &App) {
         Screen::Checks => checks(ui, app),
         Screen::Restart => restart(ui),
         Screen::Done => done(ui, app),
+        Screen::Migrate => {}
     }
 }
 
@@ -273,7 +274,7 @@ fn goal_readout(ui: &mut Ui, app: &App, goal: Goal) {
                     ],
                 );
             }
-            Goal::CleanUp | Goal::DoItMyself => {}
+            Goal::CleanUp | Goal::Migrate | Goal::DoItMyself => {}
         }
     }
     block_gap(ui);

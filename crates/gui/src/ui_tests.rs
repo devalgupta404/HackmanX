@@ -449,6 +449,24 @@ fn every_width_lays_out_without_overflowing() {
 }
 
 #[test]
+fn the_migration_goal_converges_and_cuts_over_to_a_receipt() {
+    let mut harness = home_harness(1440.0);
+    harness.get_by_label("Migrate to new hardware").click();
+    harness.run_steps(4);
+    assert_eq!(harness.state().screen, Screen::Migrate);
+    assert!(!harness.state().migrate.committed());
+
+    // Let the demo converge, then commit the cutover.
+    seconds(&mut harness, 6.0);
+    harness.get_by_label("Cut over now").click();
+    harness.run_steps(4);
+    assert!(
+        harness.state().migrate.committed(),
+        "the cutover should leave a signed receipt"
+    );
+}
+
+#[test]
 fn tab_reaches_the_partition_blocks_in_disk_order() {
     let mut harness = harness(1440.0);
     let order = [

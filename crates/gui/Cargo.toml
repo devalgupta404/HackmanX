@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 bootshift-core.workspace = true
+bootshift-migrate-core = { path = "../../migrate/crates/core" }
 anyhow.workspace = true
 eframe.workspace = true
 serde.workspace = true
