@@ -300,7 +300,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 
 ### Phase 10 — Rehearsal
 
-- [ ] **10.1 `rehearse`.** Pause the applier at a pass boundary, take a dm-snapshot, export it, resume the applier.
+- [x] **10.1 `rehearse`.** Pause the applier at a pass boundary, take a dm-snapshot, export it, resume the applier.
   **Done when** a throwaway VM boots the rehearsal copy and the hash index is unchanged.
 - [ ] **10.2 Rehearsal report:**
   - boot time;
