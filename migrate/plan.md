@@ -270,7 +270,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
   - `FIFREEZE` every filesystem, deepest mount first.
   - Confirm no write after the freeze; the watchdog thaws if this doesn't finish in time.
 - [x] **7.2 Final pass, final verify, receipt, `Committed` on both sides.**
-- [ ] **7.3 Rollback:** a recorded `RolledBack` on the target, then a thaw on the source.
+- [x] **7.3 Rollback:** a recorded `RolledBack` on the target, then a thaw on the source.
 
 ### Phase 8 — Target finalize
 
@@ -310,7 +310,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 
 ### Phase 11 — Proof after go-live
 
-- [ ] **11.1 Background source verify.**
+- [x] **11.1 Background source verify.**
   - Read the frozen or powered-off source (in the BootShift recovery image, or by attaching its volume) and compare with the receipt.
   - On mismatch, report the exact chunks and offer a rollback.
 
