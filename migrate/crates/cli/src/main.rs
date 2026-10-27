@@ -10,6 +10,7 @@ mod common;
 mod finalize;
 mod mirror;
 mod receive;
+mod rehearse;
 mod send;
 
 const DEFAULT_NQN: &str = "nqn.2026-10.org.bootshift:migrate";
@@ -79,6 +80,21 @@ enum Command {
     Status,
     /// Boot a throwaway copy of the replica to test it while replication continues.
     Rehearse {
+        /// The replica (target) block device to snapshot.
+        #[arg(long)]
+        data: PathBuf,
+        /// A copy-on-write device for the snapshot's writes.
+        #[arg(long)]
+        cow: Option<PathBuf>,
+        /// Name prefix for the dm devices.
+        #[arg(long, default_value = "rehearse")]
+        name: String,
+        /// Also export the snapshot over nvme-tcp so another machine can boot it.
+        #[arg(long)]
+        export: bool,
+        /// Port for the nvme-tcp export.
+        #[arg(long, default_value_t = 4421)]
+        port: u16,
         /// Tear the rehearsal down.
         #[arg(long)]
         end: bool,
@@ -214,7 +230,23 @@ fn main() -> anyhow::Result<()> {
         Command::MirrorPromote { vg, lv } => mirror::promote(&vg, &lv),
         Command::MirrorTeardown { nqn, port } => mirror::teardown(&nqn, port),
         Command::Status => not_implemented("status"),
-        Command::Rehearse { .. } => not_implemented("rehearse"),
+        Command::Rehearse {
+            data,
+            cow,
+            name,
+            export,
+            port,
+            end,
+        } => {
+            let nqn = "nqn.2026-10.org.bootshift:rehearse";
+            if end {
+                rehearse::end(&name, export.then_some((port, nqn)))
+            } else {
+                let cow = cow.ok_or_else(|| anyhow::anyhow!("rehearse needs --cow <device>"))?;
+                let export = export.then_some(("0.0.0.0", port, nqn));
+                rehearse::start(&data.to_string_lossy(), &cow.to_string_lossy(), &name, export)
+            }
+        }
         Command::Cutover { .. } => not_implemented("cutover"),
         Command::Rollback => not_implemented("rollback"),
         Command::Verify => not_implemented("verify"),
