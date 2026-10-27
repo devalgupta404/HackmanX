@@ -461,6 +461,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bootshift-migrate-gui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bootshift-migrate-core",
+ "eframe",
+ "egui_kittest",
+]
+
+[[package]]
 name = "bootshift-migrate-net"
 version = "0.1.0"
 dependencies = [
