@@ -78,6 +78,10 @@ enum Task {
         /// grows the partition and filesystem to fill it.
         #[arg(long)]
         reshape: bool,
+        /// Mirror mode: the source mirrors its LVM volume onto the target over nvme-tcp, then the
+        /// target promotes the synced leg.
+        #[arg(long)]
+        mirror: bool,
     },
 }
 
@@ -93,9 +97,12 @@ fn main() -> Result<()> {
         Task::BootProof { no_power_cut } => boot_proof(&paths, no_power_cut),
         Task::Demo { fresh } => demo(&paths, fresh),
         Task::DemoGui { fresh } => demo_gui(&paths, fresh),
-        Task::MigrateRig { data_mib, live, reshape } => {
-            migrate_rig(&paths, data_mib, live, reshape)
-        }
+        Task::MigrateRig {
+            data_mib,
+            live,
+            reshape,
+            mirror,
+        } => migrate_rig(&paths, data_mib, live, reshape, mirror),
     }
 }
 
@@ -589,8 +596,11 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
 /// over a real TCP link, then proves the target is byte-identical and its filesystem mounts intact.
 /// The link runs through the host loopback: the target forwards a host port to its receiver, and the
 /// source reaches it as `10.0.2.2:<port>` (its view of the host). Nothing touches a real disk.
-fn migrate_rig(paths: &Paths, data_mib: u64, live: bool, reshape: bool) -> Result<()> {
+fn migrate_rig(paths: &Paths, data_mib: u64, live: bool, reshape: bool, mirror: bool) -> Result<()> {
     prepare_vm(paths, false)?;
+    if mirror {
+        return migrate_mirror_rig(paths, data_mib);
+    }
     // Live mode needs the eBPF tracker, which libbpf ties to glibc, so it uses the dynamic binary;
     // the plain copy and reshape use the static musl binary.
     let migrate_bin = if live {
@@ -855,6 +865,138 @@ fn migrate_reshape(
     if grown_mib <= data_mib {
         bail!("the filesystem did not grow past the original {data_mib} MiB (got {grown_mib} MiB)");
     }
+    Ok(())
+}
+
+/// LVM mirror mode: the source mirrors its volume onto the target's PV over nvme-tcp, syncs the
+/// raid1 legs, stands down, and the target promotes its leg to a standalone volume. The source's
+/// LVM metadata is written (the M1 exception). Nothing touches a real disk.
+fn migrate_mirror_rig(paths: &Paths, data_mib: u64) -> Result<()> {
+    let migrate_bin = build_musl_migrate(paths)?;
+    let data_bytes = data_mib * (1 << 20);
+    let src_root = overlay_of(paths, &paths.prepared(), "mig-src.qcow2")?;
+    let tgt_root = overlay_of(paths, &paths.prepared(), "mig-tgt.qcow2")?;
+    let src_data = paths.out.join("mig-src-data.raw");
+    let tgt_data = paths.out.join("mig-tgt-data.raw");
+    create_raw(&src_data, data_bytes)?;
+    create_raw(&tgt_data, data_bytes)?;
+
+    let display = display_from_env();
+    let nvme_port = guest::free_port()?;
+
+    println!("booting the target guest (nvme-tcp export)…");
+    let mut target = Guest::launch_opts(paths, &LaunchOpts {
+        disk: &tgt_root,
+        display,
+        extra_disks: &[ExtraDisk { image: tgt_data.clone(), serial: "tgtdata".into() }],
+        extra_hostfwd: &[(nvme_port, 4420)],
+    })?;
+    target.wait_ssh()?;
+    println!("booting the source guest (LVM mirror)…");
+    let mut source = Guest::launch_opts(paths, &LaunchOpts {
+        disk: &src_root,
+        display,
+        extra_disks: &[ExtraDisk { image: src_data.clone(), serial: "srcdata".into() }],
+        extra_hostfwd: &[],
+    })?;
+    source.wait_ssh()?;
+
+    let src_dev = "/dev/disk/by-id/virtio-srcdata";
+    let tgt_dev = "/dev/disk/by-id/virtio-tgtdata";
+
+    // Ubuntu cloud images keep the nvme-target and nvme-tcp modules in linux-modules-extra, and
+    // the prepared image's 2 GiB root is nearly full. Grow the root into the gap the prepared
+    // layout leaves after it, then install the modules (version-matched to the running kernel).
+    // Ubuntu cloud images keep the nvme-target and nvme-tcp modules in linux-modules-extra, and the
+    // prepared image's 2 GiB root is nearly full. Grow the root into the gap the prepared layout
+    // leaves after it, free the apt cache, and install the modules version-matched to the kernel.
+    // The linux-image initramfs trigger may fail for lack of space, which is harmless here: only the
+    // module files and depmod matter (nothing reboots), so depmod then makes modprobe find them.
+    // The prepared image's 2 GiB root is nearly full, and Ubuntu keeps the nvme-tcp and nvme-target
+    // modules in linux-modules-extra. Grow the root into the gap the prepared layout leaves after it
+    // (the live-mounted disk can't be repartitioned, but it can grow into a trailing gap), free the
+    // apt cache and snapd, then extract just the module files with dpkg-deb -x (no maintainer
+    // scripts, so the linux-image initramfs trigger can't fill the disk) and depmod them in.
+    println!("growing the root and installing lvm2, nvme-cli, the nvme modules…");
+    for guest in [&mut source, &mut target] {
+        guest.ssh(
+            "sudo growpart /dev/sda 1 2>/dev/null; sudo partx -u /dev/sda 2>/dev/null; \
+             sudo resize2fs /dev/sda1 2>/dev/null; sudo apt-get clean; true",
+        )?;
+        guest.ssh("sudo apt-get update -qq; sudo apt-get install -y -qq lvm2 nvme-cli 2>&1 | tail -1; true")?;
+        // Extract ONLY the nvme module files (about a megabyte) from the 64 MiB package, not all of
+        // linux-modules-extra (230 MiB would fill the small root). Retry the download (it crosses a
+        // slow NAT) and verify the target module actually landed, so a partial download can't pass.
+        guest.ssh(
+            "cd /tmp && rm -f linux-modules-extra-*.deb; k=$(uname -r); \
+             for t in 1 2 3 4; do apt-get download linux-modules-extra-$k && break; sleep 2; done; \
+             dpkg-deb --fsys-tarfile linux-modules-extra-*.deb \
+               | sudo tar -x -C / --wildcards './lib/modules/*/kernel/drivers/nvme/*'; \
+             rm -f linux-modules-extra-*.deb; sudo depmod -a; \
+             test -f /lib/modules/$k/kernel/drivers/nvme/target/nvmet-tcp.ko \
+               && test -f /lib/modules/$k/kernel/drivers/nvme/host/nvme-tcp.ko && echo MODULES-OK",
+        )
+        .context("extracting the nvme-tcp modules into the guest")?;
+        guest.scp(&migrate_bin, "/tmp/bootshift-migrate")?;
+        guest.ssh("sudo install -m0755 /tmp/bootshift-migrate /usr/local/sbin/bootshift-migrate")?;
+    }
+    // Load by the leaf module so modprobe pulls each dependency itself (nvmet_tcp pulls nvmet;
+    // nvme_tcp pulls nvme_fabrics and nvme_core).
+    target
+        .ssh("sudo depmod -a; sudo modprobe nvmet_tcp && lsmod | grep -q nvmet_tcp && echo NVMET-OK")
+        .context("loading nvmet_tcp on the target")?;
+    source
+        .ssh("sudo depmod -a; sudo modprobe nvme_tcp && sudo modprobe dm_raid && lsmod | grep -q nvme_tcp && echo NVME-OK")
+        .context("loading nvme_tcp on the source")?;
+
+    let lv_mib = (data_mib / 2).max(16);
+    let file_mib = (lv_mib / 4).max(2);
+    println!("building the source LVM volume ({lv_mib} MiB) with checksummed files…");
+    source.ssh(&format!(
+        "sudo pvcreate -y {src_dev} && sudo vgcreate vgsrc {src_dev} \
+         && sudo lvcreate -y -L {lv_mib}M -n lvdata vgsrc \
+         && sudo mkfs.ext4 -q -F /dev/vgsrc/lvdata && sudo mkdir -p /mnt/d \
+         && sudo mount /dev/vgsrc/lvdata /mnt/d \
+         && for i in 1 2 3; do sudo dd if=/dev/urandom of=/mnt/d/file$i bs=1M count={file_mib} status=none; done \
+         && sudo sh -c 'cd /mnt/d && sha256sum file* > MANIFEST' && sudo sync"
+    ))?;
+
+    println!("exporting the target PV over nvme-tcp…");
+    target.ssh(&format!(
+        "sudo /usr/local/sbin/bootshift-migrate mirror-export --dev {tgt_dev}"
+    ))?;
+
+    println!("attaching the mirror leg on the source and syncing…");
+    let attach = source.ssh(&format!(
+        "sudo /usr/local/sbin/bootshift-migrate mirror-attach --addr 10.0.2.2 --port {nvme_port} --vg vgsrc --lv lvdata"
+    ))?;
+    println!("{}", attach.trim());
+    if !attach.contains("in sync") {
+        bail!("the mirror did not reach sync:\n{attach}");
+    }
+
+    println!("cutover: unmount the source, stand it down, and promote the target…");
+    source.ssh(
+        "sudo umount /mnt/d && sudo /usr/local/sbin/bootshift-migrate mirror-stand-down --vg vgsrc",
+    )?;
+    let verify = target.ssh(
+        "sudo pvscan --cache >/dev/null 2>&1; sudo vgscan >/dev/null 2>&1; \
+         sudo /usr/local/sbin/bootshift-migrate mirror-promote --vg vgsrc --lv lvdata \
+         && sudo mkdir -p /mnt/d && sudo mount /dev/vgsrc/lvdata /mnt/d \
+         && (cd /mnt/d && sudo sha256sum --quiet -c MANIFEST && echo FILES-OK); sudo umount /mnt/d 2>/dev/null || true",
+    )?;
+    println!("{}", verify.trim());
+    if !verify.contains("FILES-OK") {
+        bail!("the promoted target volume did not verify:\n{verify}");
+    }
+
+    source.poweroff()?;
+    target.poweroff()?;
+    println!();
+    println!("MIRROR RIG PASSED");
+    println!("  built an LVM volume on the source and mirrored it onto the target over nvme-tcp");
+    println!("  synced the raid1 legs, stood the source down, and promoted the target leg");
+    println!("  the promoted target volume mounts with every file intact");
     Ok(())
 }
 

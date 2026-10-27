@@ -78,7 +78,7 @@ pub fn write_seed(paths: &Paths) -> Result<()> {
     // growpart off: the root partition must not swallow the disk, the data partition and the
     // move gap need the space.
     let user_data = format!(
-        "#cloud-config\nssh_authorized_keys:\n  - {}\ngrowpart:\n  mode: \"off\"\nresize_rootfs: false\npackage_update: true\npackages: [zstd, ntfs-3g, smartmontools, efibootmgr, gdisk, btrfs-progs]\n",
+        "#cloud-config\nssh_authorized_keys:\n  - {}\ngrowpart:\n  mode: \"off\"\nresize_rootfs: false\npackage_update: true\npackages: [zstd, ntfs-3g, smartmontools, efibootmgr, gdisk, btrfs-progs, lvm2, nvme-cli, cloud-guest-utils]\n",
         public_key.trim()
     );
     std::fs::write(paths.out.join("user-data"), user_data)?;
