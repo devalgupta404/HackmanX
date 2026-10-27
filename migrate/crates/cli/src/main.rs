@@ -12,6 +12,7 @@ mod mirror;
 mod receive;
 mod rehearse;
 mod send;
+mod verify;
 
 const DEFAULT_NQN: &str = "nqn.2026-10.org.bootshift:migrate";
 
@@ -49,6 +50,9 @@ enum Command {
         /// Run id for the scratch journal.
         #[arg(long, default_value_t = 1)]
         run_id: u64,
+        /// Write the signed receipt to this file when the migration finalizes.
+        #[arg(long)]
+        receipt: Option<PathBuf>,
     },
     /// Send this source to a paired receiver.
     Send {
@@ -164,6 +168,9 @@ enum Command {
         source: Option<PathBuf>,
         #[arg(long)]
         target: Option<PathBuf>,
+        /// Block size to assume when a disk is an image file, not a block device.
+        #[arg(long, default_value_t = 4096)]
+        block_size: u32,
     },
     /// Lay out, grow and adapt the target from a committed run.
     Finalize {
@@ -192,7 +199,16 @@ fn main() -> anyhow::Result<()> {
             block_size,
             epoch,
             run_id,
-        } => receive::run(&data, &scratch, &listen, block_size, epoch, run_id),
+            receipt,
+        } => receive::run(
+            &data,
+            &scratch,
+            &listen,
+            block_size,
+            epoch,
+            run_id,
+            receipt.as_deref(),
+        ),
         Command::Send {
             source,
             to,
@@ -250,7 +266,12 @@ fn main() -> anyhow::Result<()> {
         Command::Cutover { .. } => not_implemented("cutover"),
         Command::Rollback => not_implemented("rollback"),
         Command::Verify => not_implemented("verify"),
-        Command::VerifyReceipt { .. } => not_implemented("verify-receipt"),
+        Command::VerifyReceipt {
+            file,
+            source,
+            target,
+            block_size,
+        } => verify::run(&file, source.as_deref(), target.as_deref(), block_size),
         Command::Finalize {
             data,
             grow_last,

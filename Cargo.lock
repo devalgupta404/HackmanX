@@ -443,6 +443,7 @@ dependencies = [
  "bootshift-migrate-receive",
  "bootshift-migrate-track",
  "clap",
+ "serde_json",
 ]
 
 [[package]]

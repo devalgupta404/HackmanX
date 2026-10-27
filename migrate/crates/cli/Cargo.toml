@@ -22,6 +22,7 @@ ebpf = ["bootshift-migrate-track/ebpf"]
 anyhow.workspace = true
 clap.workspace = true
 blake3.workspace = true
+serde_json.workspace = true
 bootshift-disk.workspace = true
 bootshift-migrate-core = { path = "../core" }
 bootshift-migrate-net = { path = "../net" }

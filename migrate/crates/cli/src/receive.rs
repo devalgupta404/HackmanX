@@ -30,6 +30,7 @@ pub fn run(
     block_size: u32,
     epoch: u64,
     run_id: u64,
+    receipt_out: Option<&Path>,
 ) -> Result<()> {
     let mut target = open_device(data, Access::ReadWrite, block_size)?;
     let mut scratch_dev = open_device(scratch, Access::ReadWrite, block_size)?;
@@ -114,6 +115,13 @@ pub fn run(
                         );
                         receipt.sign_with_seed(&RECEIVER_KEY_SEED);
                         let matched = receipt.roots_match();
+                        if let Some(path) = receipt_out {
+                            let json = serde_json::to_vec_pretty(&receipt)
+                                .context("serialising the receipt")?;
+                            std::fs::write(path, json)
+                                .with_context(|| format!("writing the receipt to {}", path.display()))?;
+                            println!("receive: wrote receipt to {}", path.display());
+                        }
                         link.send(encode(epoch, FrameSeq(0), &Message::Receipt { receipt })?);
                         println!(
                             "receive: sent signed receipt (roots {})",
