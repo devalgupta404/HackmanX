@@ -20,6 +20,9 @@ pub struct App {
     dirty_bytes: u64,
     receipt: Option<Receipt>,
     frame: u64,
+    /// For an unattended recording: cut over by itself a moment after it is ready.
+    autocut: bool,
+    ready_frames: u64,
 }
 
 impl App {
@@ -31,6 +34,8 @@ impl App {
             dirty_bytes: 4096 * MIB,
             receipt: None,
             frame: 0,
+            autocut: std::env::var_os("MIGRATE_GUI_AUTOCUT").is_some(),
+            ready_frames: 0,
         }
     }
 
@@ -101,6 +106,12 @@ impl App {
         self.frame += 1;
         if self.receipt.is_none() && self.frame % 12 == 0 {
             self.step();
+        }
+        if self.autocut && self.receipt.is_none() && matches!(self.advice, Advice::Ready { .. }) {
+            self.ready_frames += 1;
+            if self.ready_frames > 48 {
+                self.cutover();
+            }
         }
 
         ui.heading("BootShift Migrate");

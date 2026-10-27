@@ -705,7 +705,7 @@ fn migrate_rig(
         "sudo systemctl reset-failed migrate-recv 2>/dev/null; true; \
          sudo systemd-run --unit=migrate-recv --collect /bin/sh -c \
          'exec /usr/local/sbin/bootshift-migrate receive --data {tgt_dev} --scratch {scr_dev} \
-          --listen 0.0.0.0:9876 > /tmp/recv.log 2>&1'"
+          --listen 0.0.0.0:9876 --receipt /tmp/receipt.json > /tmp/recv.log 2>&1'"
     ))?;
     // Wait until the receiver is actually listening before the source dials it.
     target.ssh("for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q ':9876' && exit 0; sleep 0.5; done; echo 'receiver never listened'; cat /tmp/recv.log 2>/dev/null; exit 1")
@@ -787,6 +787,18 @@ fn migrate_live(
     tgt_dev: &str,
     mig_port: u16,
 ) -> Result<()> {
+    // BEFORE: show the proof on each machine's OWN screen (its console, /dev/tty1, is what the VM
+    // window displays) — the source holds real files, the target disk is blank.
+    println!("BEFORE: proving the starting state on each machine's screen…");
+    let _ = source.ssh(
+        "{ printf '\\n========  SOURCE MACHINE  ========\\n'; echo 'files to migrate, with checksums:'; \
+          sudo cat /mnt/d/MANIFEST; printf '=================================\\n\\n'; } | sudo tee /dev/tty1 >/dev/null",
+    )?;
+    let _ = target.ssh(&format!(
+        "{{ printf '\\n========  TARGET MACHINE  ========\\n'; echo 'disk is blank (sha256 of the empty device):'; \
+           sudo sha256sum {tgt_dev}; printf '==================================\\n\\n'; }} | sudo tee /dev/tty1 >/dev/null",
+    ))?;
+
     // A background writer keeps changing the mounted source during the migration.
     source.ssh(
         "sudo systemctl reset-failed migrate-churn 2>/dev/null; true; \
@@ -815,14 +827,23 @@ fn migrate_live(
     }
     println!("receiver:\n{}", recv_log.trim());
 
-    // The frozen image the receipt covers must be a consistent filesystem: fsck it, then mount it.
-    let check = target.ssh(&format!(
-        "sudo e2fsck -fn {tgt_dev} >/dev/null 2>&1 && echo FSCK-CLEAN; \
-         sudo mkdir -p /mnt/d && sudo mount {tgt_dev} /mnt/d && ls /mnt/d >/dev/null && echo MOUNT-OK; \
-         sudo umount /mnt/d 2>/dev/null || true",
+    // AFTER: show the proof on the TARGET machine's own screen — an independent verify-receipt
+    // against its disk, and the file-by-file checksum check. tee both to its console and to us.
+    println!("AFTER: proving the result on the target machine's screen…");
+    let proof = target.ssh(&format!(
+        "{{ printf '\\n======  TARGET MACHINE: PROOF  ======\\n'; \
+           echo '>> verify the signed receipt against THIS disk:'; \
+           sudo /usr/local/sbin/bootshift-migrate verify-receipt /tmp/receipt.json --target {tgt_dev}; \
+           echo; echo '>> every file now matches the source manifest:'; \
+           sudo mkdir -p /mnt/p && sudo mount {tgt_dev} /mnt/p && (cd /mnt/p && sudo sha256sum -c MANIFEST 2>/dev/null); \
+           sudo umount /mnt/p 2>/dev/null || true; printf '=====================================\\n\\n'; }} 2>&1 | sudo tee /dev/tty1",
     ))?;
-    if !check.contains("FSCK-CLEAN") || !check.contains("MOUNT-OK") {
-        bail!("the migrated filesystem is not clean/mountable:\n{check}");
+    println!("{}", proof.trim());
+    if !proof.contains("the receipt verifies") {
+        bail!("verify-receipt did not confirm the target:\n{proof}");
+    }
+    if proof.lines().filter(|l| l.ends_with(": OK")).count() == 0 {
+        bail!("no files verified against the manifest:\n{proof}");
     }
     Ok(())
 }

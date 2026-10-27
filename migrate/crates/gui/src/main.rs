@@ -24,8 +24,8 @@ fn main() -> anyhow::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title("BootShift Migrate")
             .with_app_id("org.bootshift.Migrate")
-            .with_inner_size([640.0, 760.0])
-            .with_min_inner_size([520.0, 600.0]),
+            .with_inner_size([620.0, 680.0])
+            .with_min_inner_size([520.0, 560.0]),
         ..eframe::NativeOptions::default()
     };
     eframe::run_native(
