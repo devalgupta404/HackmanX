@@ -107,6 +107,21 @@ pub fn stand_down(vg: &str, nqn: &str) -> Result<()> {
     Ok(())
 }
 
+/// Sender: roll back the mirror — drop the target leg, keep the source leg (which has the data all
+/// along, M1), remove the target PV and disconnect it. The source is left exactly as it was.
+pub fn rollback(vg: &str, lv: &str, nqn: &str) -> Result<()> {
+    let dev = any_nvme_namespace()
+        .context("finding the connected target leg to roll back")?;
+    run(
+        Command::new("lvconvert").args(["-y", "-m", "0", &format!("{vg}/{lv}"), &dev]),
+        "lvconvert -m 0 (drop target leg)",
+    )?;
+    run(Command::new("vgreduce").args([vg, &dev]), "vgreduce")?;
+    let _ = Command::new("nvme").args(["disconnect", "-n", nqn]).status();
+    println!("mirror: rolled back; the source keeps its data and the target leg is gone");
+    Ok(())
+}
+
 /// Receiver: promote the mirror leg to a standalone volume group — drop the now-missing source PV,
 /// collapse the raid to the single local leg, and activate it. The target now owns the data.
 pub fn promote(vg: &str, lv: &str) -> Result<()> {
@@ -171,6 +186,13 @@ fn is_namespace_node(name: &str) -> bool {
         && controller.chars().all(|c| c.is_ascii_digit())
         && !namespace.is_empty()
         && namespace.chars().all(|c| c.is_ascii_digit())
+}
+
+fn any_nvme_namespace() -> Result<String> {
+    nvme_namespaces()
+        .into_iter()
+        .next()
+        .context("no connected nvme target namespace found")
 }
 
 fn wait_for_new_namespace(before: &[String], timeout: Duration) -> Result<String> {

@@ -12,6 +12,7 @@ mod mirror;
 mod receive;
 mod rehearse;
 mod send;
+mod status;
 mod verify;
 
 const DEFAULT_NQN: &str = "nqn.2026-10.org.bootshift:migrate";
@@ -80,8 +81,23 @@ enum Command {
         #[arg(long, default_value_t = 5000)]
         budget_ms: u64,
     },
-    /// Show the passes, churn, forecast and state on both sides.
-    Status,
+    /// Show the migration state from the receiver's journal.
+    Status {
+        /// The receiver's scratch device holding the journal.
+        #[arg(long)]
+        scratch: PathBuf,
+        #[arg(long, default_value_t = 4096)]
+        block_size: u32,
+    },
+    /// Mirror mode (sender): roll back the mirror, keeping the source and dropping the target leg.
+    MirrorRollback {
+        #[arg(long)]
+        vg: String,
+        #[arg(long)]
+        lv: String,
+        #[arg(long, default_value = DEFAULT_NQN)]
+        nqn: String,
+    },
     /// Boot a throwaway copy of the replica to test it while replication continues.
     Rehearse {
         /// The replica (target) block device to snapshot.
@@ -159,8 +175,16 @@ enum Command {
     },
     /// Abandon the migration and leave the source running.
     Rollback,
-    /// Background re-read of the preserved source against the receipt (A10).
-    Verify,
+    /// Background re-read of the preserved source against the receipt (A10): confirm the source
+    /// still matches the root it was signed with.
+    Verify {
+        #[arg(long)]
+        receipt: PathBuf,
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long, default_value_t = 4096)]
+        block_size: u32,
+    },
     /// Check a receipt's signature and, given both disks, its roots.
     VerifyReceipt {
         file: PathBuf,
@@ -245,7 +269,11 @@ fn main() -> anyhow::Result<()> {
         Command::MirrorStandDown { vg, nqn } => mirror::stand_down(&vg, &nqn),
         Command::MirrorPromote { vg, lv } => mirror::promote(&vg, &lv),
         Command::MirrorTeardown { nqn, port } => mirror::teardown(&nqn, port),
-        Command::Status => not_implemented("status"),
+        Command::MirrorRollback { vg, lv, nqn } => mirror::rollback(&vg, &lv, &nqn),
+        Command::Status {
+            scratch,
+            block_size,
+        } => status::run(&scratch, block_size),
         Command::Rehearse {
             data,
             cow,
@@ -265,7 +293,11 @@ fn main() -> anyhow::Result<()> {
         }
         Command::Cutover { .. } => not_implemented("cutover"),
         Command::Rollback => not_implemented("rollback"),
-        Command::Verify => not_implemented("verify"),
+        Command::Verify {
+            receipt,
+            source,
+            block_size,
+        } => verify::run(&receipt, Some(&source), None, block_size),
         Command::VerifyReceipt {
             file,
             source,
