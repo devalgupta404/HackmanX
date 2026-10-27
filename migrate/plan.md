@@ -289,13 +289,13 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 
 ### Phase 9 — LVM mirror mode
 
-- [ ] **9.1 Receiver exports the PV partition** (NVMe/TCP, then iSCSI) with a fencing token in the export name.
-- [ ] **9.2 Sender controls the mirror:**
+- [x] **9.1 Receiver exports the PV partition** (NVMe/TCP, then iSCSI) with a fencing token in the export name.
+- [x] **9.2 Sender controls the mirror:**
   - attach the leg, `lvconvert raid1`;
   - watch the sync;
   - on a link outage, let the leg degrade and continue (the source never blocks);
   - on reconnect, resync only the changed regions.
-- [ ] **9.3 Cutover in mirror mode:** freeze → sync at 100% → `Committed` → the target removes the missing PV in one idempotent journaled step.
+- [x] **9.3 Cutover in mirror mode:** freeze → sync at 100% → `Committed` → the target removes the missing PV in one idempotent journaled step.
 - [ ] **9.4 Non-LVM parts** (ESP, `/boot`) go through the tracker path in the same run.
 
 ### Phase 10 — Rehearsal
