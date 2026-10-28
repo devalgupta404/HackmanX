@@ -26,14 +26,18 @@ pub fn run(source: &Path, to: &str, block_size: u32, epoch: u64) -> Result<()> {
     let epoch = Epoch(epoch);
 
     let mut link = TcpLink::connect(to).with_context(|| format!("connecting to {to}"))?;
-    link.send(encode(epoch, FrameSeq(0), &Message::Hello {
-        protocol: PROTOCOL_VERSION,
-        role: Role::Sender,
-        software: concat!("bootshift-migrate ", env!("CARGO_PKG_VERSION")).to_string(),
-        disk_len: src_len,
-        block_size: src.logical_block_size(),
-        used_digest: [0u8; 32],
-    })?);
+    link.send(encode(
+        epoch,
+        FrameSeq(0),
+        &Message::Hello {
+            protocol: PROTOCOL_VERSION,
+            role: Role::Sender,
+            software: concat!("bootshift-migrate ", env!("CARGO_PKG_VERSION")).to_string(),
+            disk_len: src_len,
+            block_size: src.logical_block_size(),
+            used_digest: [0u8; 32],
+        },
+    )?);
 
     let (_, _, hello) = recv_message(&mut link, Duration::from_secs(30))?;
     let Message::Hello {
@@ -61,32 +65,44 @@ pub fn run(source: &Path, to: &str, block_size: u32, epoch: u64) -> Result<()> {
             .with_context(|| format!("reading the source at offset {offset}"))?;
         let hash = *blake3::hash(&buf[..len]).as_bytes();
         seq += 1;
-        link.send(encode(epoch, FrameSeq(seq), &Message::Chunk {
-            pass: 1,
-            source: DiskRange::new(offset, end),
-            hash,
-            codec: Codec::None,
-            data: buf[..len].to_vec(),
-        })?);
+        link.send(encode(
+            epoch,
+            FrameSeq(seq),
+            &Message::Chunk {
+                pass: 1,
+                source: DiskRange::new(offset, end),
+                hash,
+                codec: Codec::None,
+                data: buf[..len].to_vec(),
+            },
+        )?);
         offset = end;
         drain_to_high_water(&mut link, &mut acked)?;
     }
 
     let last_seq = seq;
     seq += 1;
-    link.send(encode(epoch, FrameSeq(seq), &Message::PassEnd {
-        pass: 1,
-        kind: PassKind::Final,
-        sent_bytes: src_len,
-        dirty_at_end: 0,
-    })?);
+    link.send(encode(
+        epoch,
+        FrameSeq(seq),
+        &Message::PassEnd {
+            pass: 1,
+            kind: PassKind::Final,
+            sent_bytes: src_len,
+            dirty_at_end: 0,
+        },
+    )?);
     link.flush(Duration::from_secs(120))
         .map_err(|_| anyhow::anyhow!("the link cut while flushing the final chunks"))?;
 
     wait_for_ack(&mut link, last_seq, Duration::from_secs(600))?;
 
     seq += 1;
-    link.send(encode(epoch, FrameSeq(seq), &Message::Committed { epoch: epoch.0 })?);
+    link.send(encode(
+        epoch,
+        FrameSeq(seq),
+        &Message::Committed { epoch: epoch.0 },
+    )?);
     link.flush(Duration::from_secs(30))
         .map_err(|_| anyhow::anyhow!("the link cut before the commit was delivered"))?;
 
@@ -150,8 +166,8 @@ mod live {
     use bootshift_migrate_net::{Link, LinkError, TcpLink};
     use bootshift_migrate_track::{Drained, EbpfTracker, Tracker};
 
-    use crate::common::{device_root, freeze, open_device, recv_message, thaw};
     use super::{CHUNK, drain_to_high_water, wait_for_ack};
+    use crate::common::{device_root, freeze, open_device, recv_message, thaw};
 
     const MAX_PASSES: usize = 40;
     const QUIET_PASSES: usize = 8;
@@ -181,16 +197,24 @@ mod live {
             .map_err(|e| anyhow::anyhow!("the tracker is not live: {e}"))?;
 
         let mut link = TcpLink::connect(to).with_context(|| format!("connecting to {to}"))?;
-        link.send(encode(epoch_e, FrameSeq(0), &Message::Hello {
-            protocol: PROTOCOL_VERSION,
-            role: Role::Sender,
-            software: concat!("bootshift-migrate ", env!("CARGO_PKG_VERSION")).to_string(),
-            disk_len: src_len,
-            block_size: src.logical_block_size(),
-            used_digest: [0u8; 32],
-        })?);
+        link.send(encode(
+            epoch_e,
+            FrameSeq(0),
+            &Message::Hello {
+                protocol: PROTOCOL_VERSION,
+                role: Role::Sender,
+                software: concat!("bootshift-migrate ", env!("CARGO_PKG_VERSION")).to_string(),
+                disk_len: src_len,
+                block_size: src.logical_block_size(),
+                used_digest: [0u8; 32],
+            },
+        )?);
         let (_, _, hello) = recv_message(&mut link, Duration::from_secs(30))?;
-        let Message::Hello { disk_len: target_len, .. } = hello else {
+        let Message::Hello {
+            disk_len: target_len,
+            ..
+        } = hello
+        else {
             bail!("the receiver did not greet with Hello");
         };
         if target_len < src_len {
@@ -213,10 +237,15 @@ mod live {
                 .map_err(|e| anyhow::anyhow!("tracker flip: {e}"))?;
             let extents = dirty.take_extents(MAX_EXTENT);
             let sent = send_pass(&mut link, &src, &extents, &mut seq, epoch_e, kind)?;
-            match tracker.drain(generation).map_err(|e| anyhow::anyhow!("tracker drain: {e}"))? {
+            match tracker
+                .drain(generation)
+                .map_err(|e| anyhow::anyhow!("tracker drain: {e}"))?
+            {
                 Drained::Ranges(changed) => dirty.extend(changed),
                 Drained::Broken(reason) => {
-                    eprintln!("send: tracking broke ({reason:?}); next pass resends the whole disk");
+                    eprintln!(
+                        "send: tracking broke ({reason:?}); next pass resends the whole disk"
+                    );
                     dirty = DirtySet::from_ranges([DiskRange::new(0, src_len)]);
                 }
             }
@@ -251,7 +280,15 @@ mod live {
             freeze(mount).with_context(|| format!("freezing {mount}"))?;
         }
         let cut_started = Instant::now();
-        let quiet = match drain_until_quiet(&mut link, &src, &mut tracker, &mut dirty, &mut seq, epoch_e, src_len) {
+        let quiet = match drain_until_quiet(
+            &mut link,
+            &src,
+            &mut tracker,
+            &mut dirty,
+            &mut seq,
+            epoch_e,
+            src_len,
+        ) {
             Ok(quiet) => quiet,
             Err(e) => {
                 if let Some(mount) = freeze_mount {
@@ -269,7 +306,11 @@ mod live {
 
         // Exchange the signed byte-equality receipt before committing.
         let source_root = device_root(&src, src_len)?;
-        link.send(encode(epoch_e, FrameSeq(seq + 1), &Message::FinalRoot { root: source_root })?);
+        link.send(encode(
+            epoch_e,
+            FrameSeq(seq + 1),
+            &Message::FinalRoot { root: source_root },
+        )?);
         link.flush(Duration::from_secs(60))
             .map_err(|_| anyhow::anyhow!("the link cut while sending the final root"))?;
 
@@ -290,7 +331,11 @@ mod live {
         verdict?;
 
         seq += 2;
-        link.send(encode(epoch_e, FrameSeq(seq), &Message::Committed { epoch })?);
+        link.send(encode(
+            epoch_e,
+            FrameSeq(seq),
+            &Message::Committed { epoch },
+        )?);
         link.flush(Duration::from_secs(30))
             .map_err(|_| anyhow::anyhow!("the link cut before the commit was delivered"))?;
 
@@ -370,25 +415,33 @@ mod live {
                 let hash = *blake3::hash(&buf[..len]).as_bytes();
                 *seq += 1;
                 last_seq = *seq;
-                link.send(encode(epoch, FrameSeq(*seq), &Message::Chunk {
-                    pass: 1,
-                    source: DiskRange::new(offset, end),
-                    hash,
-                    codec: Codec::None,
-                    data: buf[..len].to_vec(),
-                })?);
+                link.send(encode(
+                    epoch,
+                    FrameSeq(*seq),
+                    &Message::Chunk {
+                        pass: 1,
+                        source: DiskRange::new(offset, end),
+                        hash,
+                        codec: Codec::None,
+                        data: buf[..len].to_vec(),
+                    },
+                )?);
                 bytes += len as u64;
                 offset = end;
                 drain_to_high_water(link, &mut acked)?;
             }
         }
         *seq += 1;
-        link.send(encode(epoch, FrameSeq(*seq), &Message::PassEnd {
-            pass: 1,
-            kind,
-            sent_bytes: bytes,
-            dirty_at_end: 0,
-        })?);
+        link.send(encode(
+            epoch,
+            FrameSeq(*seq),
+            &Message::PassEnd {
+                pass: 1,
+                kind,
+                sent_bytes: bytes,
+                dirty_at_end: 0,
+            },
+        )?);
         link.flush(Duration::from_secs(120))
             .map_err(|_| anyhow::anyhow!("the link cut while flushing a pass"))?;
         wait_for_ack(link, last_seq, Duration::from_secs(300))?;

@@ -36,7 +36,10 @@ pub fn run(
     let mut scratch_dev = open_device(scratch, Access::ReadWrite, block_size)?;
     let data_len = target.len_bytes();
     let epoch = Epoch(epoch);
-    let layout = LayoutMap::new(vec![(DiskRange::new(0, data_len), DiskRange::new(0, data_len))]);
+    let layout = LayoutMap::new(vec![(
+        DiskRange::new(0, data_len),
+        DiskRange::new(0, data_len),
+    )]);
     let mut applier = {
         let store = Store::new(&mut scratch_dev);
         Applier::resume(&store, run_id, epoch, layout, data_len)
@@ -61,15 +64,19 @@ pub fn run(
                 match message {
                     Message::Hello { disk_len, .. } => {
                         source_len = disk_len;
-                        link.send(encode(epoch, FrameSeq(0), &Message::Hello {
-                            protocol: PROTOCOL_VERSION,
-                            role: Role::Receiver,
-                            software: concat!("bootshift-migrate ", env!("CARGO_PKG_VERSION"))
-                                .to_string(),
-                            disk_len: data_len,
-                            block_size: target.logical_block_size(),
-                            used_digest: [0u8; 32],
-                        })?);
+                        link.send(encode(
+                            epoch,
+                            FrameSeq(0),
+                            &Message::Hello {
+                                protocol: PROTOCOL_VERSION,
+                                role: Role::Receiver,
+                                software: concat!("bootshift-migrate ", env!("CARGO_PKG_VERSION"))
+                                    .to_string(),
+                                disk_len: data_len,
+                                block_size: target.logical_block_size(),
+                                used_digest: [0u8; 32],
+                            },
+                        )?);
                     }
                     Message::Chunk {
                         source, hash, data, ..
@@ -82,12 +89,26 @@ pub fn run(
                             data,
                         });
                         if batch_bytes >= BATCH_BYTES {
-                            apply(&mut applier, &mut scratch_dev, &mut target, &mut batch, &mut link, epoch)?;
+                            apply(
+                                &mut applier,
+                                &mut scratch_dev,
+                                &mut target,
+                                &mut batch,
+                                &mut link,
+                                epoch,
+                            )?;
                             batch_bytes = 0;
                         }
                     }
                     Message::PassEnd { .. } => {
-                        apply(&mut applier, &mut scratch_dev, &mut target, &mut batch, &mut link, epoch)?;
+                        apply(
+                            &mut applier,
+                            &mut scratch_dev,
+                            &mut target,
+                            &mut batch,
+                            &mut link,
+                            epoch,
+                        )?;
                         batch_bytes = 0;
                         println!(
                             "receive: pass complete, acknowledged through seq {}",
@@ -96,7 +117,14 @@ pub fn run(
                     }
                     Message::FinalRoot { root: source_root } => {
                         // Flush anything pending, then prove byte-equality with a signed receipt.
-                        apply(&mut applier, &mut scratch_dev, &mut target, &mut batch, &mut link, epoch)?;
+                        apply(
+                            &mut applier,
+                            &mut scratch_dev,
+                            &mut target,
+                            &mut batch,
+                            &mut link,
+                            epoch,
+                        )?;
                         batch_bytes = 0;
                         let target_root = device_root(&target, data_len)
                             .context("computing the target root for the receipt")?;
@@ -118,8 +146,9 @@ pub fn run(
                         if let Some(path) = receipt_out {
                             let json = serde_json::to_vec_pretty(&receipt)
                                 .context("serialising the receipt")?;
-                            std::fs::write(path, json)
-                                .with_context(|| format!("writing the receipt to {}", path.display()))?;
+                            std::fs::write(path, json).with_context(|| {
+                                format!("writing the receipt to {}", path.display())
+                            })?;
                             println!("receive: wrote receipt to {}", path.display());
                         }
                         link.send(encode(epoch, FrameSeq(0), &Message::Receipt { receipt })?);

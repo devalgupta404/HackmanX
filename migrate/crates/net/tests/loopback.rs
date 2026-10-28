@@ -73,7 +73,12 @@ fn frames_survive_a_round_trip_including_a_large_one() {
             .expect("recv ack")
             .expect("an ack");
         let (_, _, message) = decode(&frame).expect("decode ack");
-        assert_eq!(message, Message::Ack { acked_seq: i as u64 + 1 });
+        assert_eq!(
+            message,
+            Message::Ack {
+                acked_seq: i as u64 + 1
+            }
+        );
     }
 
     let got = receiver.join().expect("receiver thread");

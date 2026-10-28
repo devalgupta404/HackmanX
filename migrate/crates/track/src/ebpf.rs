@@ -60,8 +60,8 @@ impl EbpfTracker {
 
         let disk_blocks = disk_len.div_ceil(TRACK_BLOCK);
         let words_per_gen = disk_blocks.div_ceil(BITS_PER_WORD).max(1);
-        let entries = u32::try_from(words_per_gen.saturating_mul(2))
-            .map_err(|_| EbpfError::DiskTooLarge)?;
+        let entries =
+            u32::try_from(words_per_gen.saturating_mul(2)).map_err(|_| EbpfError::DiskTooLarge)?;
         let num_cpus =
             libbpf_rs::num_possible_cpus().map_err(|e| EbpfError::Load(e.to_string()))?;
 

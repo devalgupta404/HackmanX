@@ -54,15 +54,21 @@ impl Receiver<'_> {
             Message::PassEnd { .. } => {
                 if !self.batch.is_empty() {
                     let mut store = Store::new(self.scratch);
-                    if let Ok(acked) = self.applier.apply_batch(&mut store, self.target, &self.batch)
+                    if let Ok(acked) =
+                        self.applier
+                            .apply_batch(&mut store, self.target, &self.batch)
                     {
                         self.acked = acked;
                     }
                     self.batch.clear();
                 }
-                encode(EPOCH, self.acked, &Message::Ack {
-                    acked_seq: self.acked.0,
-                })
+                encode(
+                    EPOCH,
+                    self.acked,
+                    &Message::Ack {
+                        acked_seq: self.acked.0,
+                    },
+                )
                 .ok()
             }
             _ => None,
@@ -112,13 +118,16 @@ fn a_link_cut_mid_transfer_still_delivers_a_byte_exact_target() {
         .iter()
         .enumerate()
         .map(|(i, chunk)| {
-            (i as u64 + 1, Message::Chunk {
-                pass: 1,
-                source: chunk.source,
-                hash: chunk.hash,
-                codec: Codec::None,
-                data: chunk.data.clone(),
-            })
+            (
+                i as u64 + 1,
+                Message::Chunk {
+                    pass: 1,
+                    source: chunk.source,
+                    hash: chunk.hash,
+                    codec: Codec::None,
+                    data: chunk.data.clone(),
+                },
+            )
         })
         .collect();
     let pass_end_seq = FrameSeq(last_seq + 1);

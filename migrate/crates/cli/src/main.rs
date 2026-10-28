@@ -288,7 +288,12 @@ fn main() -> anyhow::Result<()> {
             } else {
                 let cow = cow.ok_or_else(|| anyhow::anyhow!("rehearse needs --cow <device>"))?;
                 let export = export.then_some(("0.0.0.0", port, nqn));
-                rehearse::start(&data.to_string_lossy(), &cow.to_string_lossy(), &name, export)
+                rehearse::start(
+                    &data.to_string_lossy(),
+                    &cow.to_string_lossy(),
+                    &name,
+                    export,
+                )
             }
         }
         Command::Cutover { .. } => not_implemented("cutover"),

@@ -13,7 +13,9 @@
 use std::time::Duration;
 
 use bootshift_disk::DiskError;
-use bootshift_migrate_core::{Advice, ConvergenceModel, DirtySet, DiskRange, MAX_EXTENT, PassKind, PassStats};
+use bootshift_migrate_core::{
+    Advice, ConvergenceModel, DirtySet, DiskRange, MAX_EXTENT, PassKind, PassStats,
+};
 use bootshift_migrate_track::{Drained, TrackError, Tracker};
 
 /// What a single transfer step moved, as the sink measured it.

@@ -87,7 +87,10 @@ fn main() {
 }
 
 #[cfg(feature = "ebpf")]
-fn covers(ranges: &[bootshift_migrate_core::DiskRange], want: bootshift_migrate_core::DiskRange) -> bool {
+fn covers(
+    ranges: &[bootshift_migrate_core::DiskRange],
+    want: bootshift_migrate_core::DiskRange,
+) -> bool {
     ranges
         .iter()
         .any(|r| r.start <= want.start && r.end >= want.end)

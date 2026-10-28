@@ -12,7 +12,10 @@ use crate::common::open_device;
 pub fn run(scratch: &Path, block_size: u32) -> Result<()> {
     let mut device = open_device(scratch, Access::ReadOnly, block_size)?;
     let store = Store::new(&mut device);
-    match store.read_newest().context("reading the newest journal slot")? {
+    match store
+        .read_newest()
+        .context("reading the newest journal slot")?
+    {
         Some(slot) => {
             println!("receiver state (from {}):", scratch.display());
             println!("  run id:         {}", slot.run_id);

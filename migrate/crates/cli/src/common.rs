@@ -16,8 +16,7 @@ pub const RECEIPT_CHUNK: u64 = 1 << 20;
 /// Opens `path` as a block device (block size from the kernel) or, if it is a regular file, as a
 /// disk image with `block_size`-byte blocks. The source is only ever opened read-only (M1).
 pub fn open_device(path: &Path, access: Access, block_size: u32) -> Result<RealDevice> {
-    let meta =
-        std::fs::metadata(path).with_context(|| format!("looking at {}", path.display()))?;
+    let meta = std::fs::metadata(path).with_context(|| format!("looking at {}", path.display()))?;
     if meta.file_type().is_block_device() {
         RealDevice::open(path, access)
             .with_context(|| format!("opening block device {}", path.display()))
@@ -28,10 +27,7 @@ pub fn open_device(path: &Path, access: Access, block_size: u32) -> Result<RealD
 }
 
 /// Blocks until one message arrives, timing out or failing if the link cuts first.
-pub fn recv_message(
-    link: &mut TcpLink,
-    timeout: Duration,
-) -> Result<(Epoch, FrameSeq, Message)> {
+pub fn recv_message(link: &mut TcpLink, timeout: Duration) -> Result<(Epoch, FrameSeq, Message)> {
     let deadline = Instant::now() + timeout;
     loop {
         match link.recv() {
