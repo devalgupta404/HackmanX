@@ -22,3 +22,11 @@
 
 # Browser test artifacts
 .playwright-mcp/
+
+# Demo recordings and screen captures (keep them out of the tree)
+*.mp4
+*.mov
+*.webm
+/*.png
+/*.jpg
+/*.jpeg

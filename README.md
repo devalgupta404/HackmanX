@@ -77,11 +77,19 @@ cd gui && npm ci && npm test && npm run build              # the web frontend
 | `crates/helper` | `bootshiftd`, the polkit-checked D-Bus service the GUI talks to |
 | `crates/gui` | `bootshift-gui`, the desktop app. Talks only to `bootshiftd`; shows a demo disk when the helper isn't running |
 | `gui/` | The TypeScript reference frontend the desktop app was built from |
+| `migrate/` | Machine-to-machine live migration: replicate a running machine onto new hardware and cut over with a signed, verified copy (send, receive, write tracking, protocol) |
 | `packaging/` | D-Bus, systemd and polkit files |
+| `xtask/` | Development tasks: fixtures, VM tests, crash suites, migration rigs, demos |
 
 ## Contributing
 
-- [`task.md`](task.md): the ordered work plan, and the research behind the design.
-- [`CLAUDE.md`](CLAUDE.md): the safety rules, code style and testing rules all contributions follow.
+Because BootShift writes to disks, the bar for changes is high. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md): it covers the one rule (never lose or corrupt data), the safety invariants, how to set up and test, and the code and PR conventions. Also see:
 
-BootShift is licensed under the GNU GPL, version 3 or later.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md): how we expect everyone to behave.
+- [`SECURITY.md`](SECURITY.md): how to report a security or data-loss vulnerability (privately, please).
+- [`task.md`](task.md): the ordered work plan and the research behind the design.
+- [`issues.md`](issues.md): known defects and gaps. A good first contribution is often one of these, with a failing test attached.
+
+## License
+
+BootShift is licensed under the GNU General Public License, version 3 or later. See [`LICENSE`](LICENSE).

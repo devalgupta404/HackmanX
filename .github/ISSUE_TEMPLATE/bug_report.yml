@@ -1,0 +1,45 @@
+name: Bug report
+description: Report incorrect behavior in BootShift
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. If this is a **security or data-loss vulnerability**, please do not file it here: use the Security tab (Report a vulnerability) instead. See SECURITY.md.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: I did not run BootShift against a real disk I care about, or this happened only in the test VM / MemDisk / CrashDisk.
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, and what went wrong?
+      placeholder: Steps to reproduce, and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: filesystem
+    attributes:
+      label: Filesystem(s) involved
+      placeholder: "ext4, NTFS, Btrfs, XFS, swap, LUKS, ..."
+  - type: textarea
+    id: layout
+    attributes:
+      label: Partition layout
+      description: The relevant part of the disk layout (for example `sudo bootshift probe <disk>` output, with any personal paths removed).
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "git commit, host OS, how you ran it (GUI / CLI / xtask rig)"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: Relevant output. Please do not paste full disk images or anything sensitive.
+      render: shell
