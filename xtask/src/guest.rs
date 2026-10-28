@@ -123,12 +123,15 @@ pub struct Guest {
 
 impl Guest {
     pub fn launch(paths: &Paths, disk: &Path, display: bool) -> Result<Self> {
-        Self::launch_opts(paths, &LaunchOpts {
-            disk,
-            display,
-            extra_disks: &[],
-            extra_hostfwd: &[],
-        })
+        Self::launch_opts(
+            paths,
+            &LaunchOpts {
+                disk,
+                display,
+                extra_disks: &[],
+                extra_hostfwd: &[],
+            },
+        )
     }
 
     pub fn launch_opts(paths: &Paths, opts: &LaunchOpts) -> Result<Self> {
@@ -190,10 +193,7 @@ impl Guest {
                 ))
                 .args([
                     "-device",
-                    &format!(
-                        "virtio-blk-pci,drive={0},serial={0}",
-                        extra.serial
-                    ),
+                    &format!("virtio-blk-pci,drive={0},serial={0}", extra.serial),
                 ]);
         }
         command

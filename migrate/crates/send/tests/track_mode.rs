@@ -14,9 +14,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use bootshift_disk::{BlockDevice, DiskError, MemDisk};
-use bootshift_migrate_core::{
-    Advice, ConvergenceModel, DiskRange, Epoch, FrameSeq, LayoutMap,
-};
+use bootshift_migrate_core::{Advice, ConvergenceModel, DiskRange, Epoch, FrameSeq, LayoutMap};
 use bootshift_migrate_receive::{Applier, IncomingChunk, Store};
 use bootshift_migrate_send::{Outcome, Transfer, Transferred, compare_pass, run_passes};
 use bootshift_migrate_testkit::LiveDisk;

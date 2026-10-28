@@ -188,7 +188,9 @@ mod tests {
         let mut receipt = sample(root, root);
         receipt.sign(&key());
         // Swap in a different public key but keep the old signature.
-        receipt.receiver_key = SigningKey::from_bytes(&[7u8; 32]).verifying_key().to_bytes();
+        receipt.receiver_key = SigningKey::from_bytes(&[7u8; 32])
+            .verifying_key()
+            .to_bytes();
         assert!(!receipt.verify());
     }
 

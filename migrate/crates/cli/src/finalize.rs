@@ -36,7 +36,11 @@ fn reshape_last_partition(disk: &str) -> Result<()> {
     println!("finalize: growing {partition} to fill {disk}");
 
     // Move the GPT backup header to the real end of the (now larger) disk.
-    accept(Command::new("sgdisk").arg("-e").arg(disk), &[0], "sgdisk -e")?;
+    accept(
+        Command::new("sgdisk").arg("-e").arg(disk),
+        &[0],
+        "sgdisk -e",
+    )?;
     reread_partitions(disk);
 
     // Extend the partition. growpart exits 0 when it grew it and 2 when there was nothing to grow
@@ -49,7 +53,11 @@ fn reshape_last_partition(disk: &str) -> Result<()> {
     reread_partitions(disk);
 
     // The filesystem must be clean before a resize; e2fsck exits 1 or 2 when it corrected it.
-    accept(Command::new("e2fsck").args(["-fy", &partition]), &[0, 1, 2], "e2fsck")?;
+    accept(
+        Command::new("e2fsck").args(["-fy", &partition]),
+        &[0, 1, 2],
+        "e2fsck",
+    )?;
     accept(Command::new("resize2fs").arg(&partition), &[0], "resize2fs")?;
     Ok(())
 }
@@ -124,7 +132,9 @@ fn partition_number(partition: &str) -> Result<u32> {
 
 /// Runs a tool, accepting any of `ok_codes` as success so idempotent re-runs don't fail.
 fn accept(command: &mut Command, ok_codes: &[i32], label: &str) -> Result<()> {
-    let output = command.output().with_context(|| format!("running {label}"))?;
+    let output = command
+        .output()
+        .with_context(|| format!("running {label}"))?;
     let code = output.status.code().unwrap_or(-1);
     if ok_codes.contains(&code) {
         return Ok(());

@@ -169,10 +169,13 @@ mod tests {
             "/dev/vda2 / ext4 defaults 0 1\n/dev/vda1 /boot/efi vfat umask=0077 0 1\n"
         );
         assert_eq!(adapted.changes.len(), 2);
-        assert_eq!(adapted.changes[0], DeviceRewrite {
-            from: "/dev/sda2".to_string(),
-            to: "/dev/vda2".to_string(),
-        });
+        assert_eq!(
+            adapted.changes[0],
+            DeviceRewrite {
+                from: "/dev/sda2".to_string(),
+                to: "/dev/vda2".to_string(),
+            }
+        );
     }
 
     #[test]

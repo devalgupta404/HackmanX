@@ -102,7 +102,9 @@ pub fn attach(addr: &str, port: u16, nqn: &str, vg: &str, lv: &str) -> Result<()
 /// with no second live copy (M7).
 pub fn stand_down(vg: &str, nqn: &str) -> Result<()> {
     run(Command::new("vgchange").args(["-an", vg]), "vgchange -an")?;
-    let _ = Command::new("nvme").args(["disconnect", "-n", nqn]).status();
+    let _ = Command::new("nvme")
+        .args(["disconnect", "-n", nqn])
+        .status();
     println!("mirror: source stood down (volume group deactivated, target leg released)");
     Ok(())
 }
@@ -110,14 +112,15 @@ pub fn stand_down(vg: &str, nqn: &str) -> Result<()> {
 /// Sender: roll back the mirror — drop the target leg, keep the source leg (which has the data all
 /// along, M1), remove the target PV and disconnect it. The source is left exactly as it was.
 pub fn rollback(vg: &str, lv: &str, nqn: &str) -> Result<()> {
-    let dev = any_nvme_namespace()
-        .context("finding the connected target leg to roll back")?;
+    let dev = any_nvme_namespace().context("finding the connected target leg to roll back")?;
     run(
         Command::new("lvconvert").args(["-y", "-m", "0", &format!("{vg}/{lv}"), &dev]),
         "lvconvert -m 0 (drop target leg)",
     )?;
     run(Command::new("vgreduce").args([vg, &dev]), "vgreduce")?;
-    let _ = Command::new("nvme").args(["disconnect", "-n", nqn]).status();
+    let _ = Command::new("nvme")
+        .args(["disconnect", "-n", nqn])
+        .status();
     println!("mirror: rolled back; the source keeps its data and the target leg is gone");
     Ok(())
 }
@@ -234,7 +237,9 @@ fn write(path: &str, value: &str) -> Result<()> {
 }
 
 fn run(command: &mut Command, label: &str) -> Result<()> {
-    let output = command.output().with_context(|| format!("running {label}"))?;
+    let output = command
+        .output()
+        .with_context(|| format!("running {label}"))?;
     if !output.status.success() {
         bail!(
             "{label} failed:\n{}\n{}",
