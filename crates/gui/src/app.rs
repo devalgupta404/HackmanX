@@ -390,9 +390,10 @@ impl App {
     /// target from one partition and an amount, and leave `Clean up` as advice for now.
     fn choose_goal(&mut self, goal: Goal) {
         if goal == Goal::Migrate {
+            // Machine-to-machine migration is not released yet: the card is a "coming soon"
+            // teaser, so clicking it does not open the migration screen.
             self.migrate.reset();
-            self.show(Screen::Migrate);
-            self.status = "Replicating this machine onto the new one.".to_string();
+            self.status = "Machine-to-machine migration is coming soon.".to_string();
             return;
         }
         let Some(probed) = self.probed.clone() else {

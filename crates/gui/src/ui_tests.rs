@@ -449,21 +449,13 @@ fn every_width_lays_out_without_overflowing() {
 }
 
 #[test]
-fn the_migration_goal_converges_and_cuts_over_to_a_receipt() {
+fn the_migration_goal_is_coming_soon_and_does_not_open() {
     let mut harness = home_harness(1440.0);
+    assert_eq!(harness.state().screen, Screen::Home);
+    // Migration is not released yet: the card is a teaser and must not open a screen.
     harness.get_by_label("Migrate to new hardware").click();
     harness.run_steps(4);
-    assert_eq!(harness.state().screen, Screen::Migrate);
-    assert!(!harness.state().migrate.committed());
-
-    // Let the demo converge, then commit the cutover.
-    seconds(&mut harness, 6.0);
-    harness.get_by_label("Cut over now").click();
-    harness.run_steps(4);
-    assert!(
-        harness.state().migrate.committed(),
-        "the cutover should leave a signed receipt"
-    );
+    assert_eq!(harness.state().screen, Screen::Home);
 }
 
 #[test]
