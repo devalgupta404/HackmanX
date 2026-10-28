@@ -7,11 +7,6 @@
 *.fd
 /xtask/out/
 
-# GUI
-/gui/node_modules/
-/gui/dist/
-/gui/src-tauri/target/
-
 # Editors and OS
 .idea/
 .vscode/

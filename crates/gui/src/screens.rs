@@ -496,6 +496,7 @@ fn goal_card(ui: &mut Ui, app: &App, goal: Goal, featured: bool, actions: &mut V
     );
     let tag = match goal {
         Goal::InstallOs => Some(("MOST COMMON", theme::SIGNAL)),
+        Goal::Migrate => Some(("COMING SOON", theme::FAINT)),
         Goal::DoItMyself => Some(("ADVANCED", theme::FAINT)),
         _ => None,
     };
