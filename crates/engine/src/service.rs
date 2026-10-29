@@ -14,6 +14,7 @@ use bootshift_disk::{Access, DiskError, GptError, GptImage, RealDevice};
 use bootshift_fs::probe::{DiskInfo, disks, find_disk};
 use bootshift_fs::run::{RunError, Runner};
 
+use crate::executor;
 use crate::facts::{self, Environment};
 use crate::preflight::{self, Bootloader, Facts};
 use crate::prepare::{self, Prepare, PrepareError};
@@ -151,6 +152,7 @@ pub fn apply(
     if !refusals.is_empty() {
         return Err(ServiceError::Refused(refusals));
     }
+    refuse_unworkable_plan(&inspected.disk.path, &inspected.layout, plan)?;
     if !initramfs::shared_libraries(runner, init)?.is_empty() {
         return Err(ServiceError::NotStatic(init.to_path_buf()));
     }
@@ -181,6 +183,21 @@ pub fn apply(
         },
         work_dir,
     })?)
+}
+
+/// Refuses a plan whose partition tables can't be built on this disk, before anything is
+/// prepared, so the recovery system never meets it.
+fn refuse_unworkable_plan(disk: &Path, layout: &Layout, plan: &Plan) -> Result<(), ServiceError> {
+    let device = RealDevice::open(disk, Access::ReadOnly).map_err(|source| ServiceError::Open {
+        path: disk.to_path_buf(),
+        source,
+    })?;
+    executor::check_table_writes(&device, layout, plan).map_err(|error| {
+        refused(
+            &format!("BootShift can't carry out this change on this disk: {error}."),
+            "Nothing was changed. Please report this as a BootShift bug.",
+        )
+    })
 }
 
 pub fn kernel_release() -> String {
