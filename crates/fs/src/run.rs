@@ -66,14 +66,35 @@ pub enum RunError {
         #[source]
         source: std::io::Error,
     },
-    #[error("`{command}` failed with exit code {status:?}: {stderr}")]
+    #[error("`{command}` {}: {explanation}", ended(*.status))]
     Failed {
         command: String,
         status: Option<i32>,
-        stderr: String,
+        /// What the tool said about the failure.
+        explanation: String,
     },
     #[error("`{command}` printed output BootShift doesn't understand: {detail}")]
     UnexpectedOutput { command: String, detail: String },
+}
+
+fn ended(status: Option<i32>) -> String {
+    match status {
+        Some(code) => format!("failed with exit code {code}"),
+        None => "was killed by a signal".to_string(),
+    }
+}
+
+/// Lines a tool printed when it failed. Some tools, such as `ntfsresize`, explain a failure on
+/// stdout and leave stderr empty, so their last few stdout lines stand in.
+fn explanation(output: &ToolOutput) -> String {
+    const STDOUT_LINES: usize = 6;
+    let stderr = output.stderr.trim();
+    if !stderr.is_empty() {
+        return stderr.to_string();
+    }
+    let stdout = output.text();
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    lines[lines.len().saturating_sub(STDOUT_LINES)..].join("\n")
 }
 
 pub trait Runner {
@@ -91,7 +112,7 @@ pub trait Runner {
             status => Err(RunError::Failed {
                 command: command.to_string(),
                 status,
-                stderr: output.stderr.trim().to_string(),
+                explanation: explanation(&output),
             }),
         }
     }
@@ -208,8 +229,26 @@ mod tests {
         let result = runner.run_expecting(&CommandLine::new("e2fsck"), &[0, 1]);
         assert!(matches!(
             result,
-            Err(RunError::Failed { status: Some(8), stderr, .. }) if stderr == "bad superblock"
+            Err(RunError::Failed { status: Some(8), explanation, .. }) if explanation == "bad superblock"
         ));
+    }
+
+    #[test]
+    fn a_failure_explained_only_on_stdout_shows_its_last_lines() {
+        let stdout = "ntfsresize v2022.10.3\nChecking filesystem consistency ...\n\
+            Cluster 2057 is referenced multiple times!\nERROR: Filesystem check failed!\n\
+            NTFS is inconsistent. Run chkdsk /f on Windows then reboot it TWICE!\n";
+        let runner = ScriptedRunner::new().reply(1, stdout);
+        let error = runner
+            .run_ok(&CommandLine::new("ntfsresize").arg("--info"))
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "`ntfsresize --info` failed with exit code 1: ntfsresize v2022.10.3\n\
+             Checking filesystem consistency ...\nCluster 2057 is referenced multiple times!\n\
+             ERROR: Filesystem check failed!\n\
+             NTFS is inconsistent. Run chkdsk /f on Windows then reboot it TWICE!"
+        );
     }
 
     #[test]
