@@ -37,6 +37,16 @@ it. Remove an issue in the same change that fixes it.
 
 ## Fixed
 
+- **I-32 Deleting a partition always failed in recovery and left a boot loop.** Fixed
+  2026-10-29, found on a real dual-boot laptop. The executor never told the table writer that
+  deleted partitions may go, so the first table write refused (`UnknownPartition`); recovery
+  then powered off with the boot redirect in place, and every start returned to the error
+  screen. Deleted partitions are now removable, and every table a plan will write is built in
+  memory at Apply and again in recovery before the first write. A plan that can't be carried
+  out is refused there, normal booting is restored, and the computer restarts into its system.
+- **I-33 A failing tool's explanation was blank.** Fixed 2026-10-29: `ntfsresize` explains on
+  stdout, so the refusal showed only "exit code Some(1):". Failures now show the tool's stderr,
+  or its last stdout lines when stderr is empty, and a plain exit code.
 - **I-02 The boot path had never run.** Retired 2026-10-26: `cargo xtask boot-proof` runs the
   whole chain in a QEMU/OVMF guest on its own SATA disk — `apply`, reboot into recovery as
   PID 1, a real ext4 partition moved, **the VM killed mid-move at ~9% (a true power cut)**, the
