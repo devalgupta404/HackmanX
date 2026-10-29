@@ -349,7 +349,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - Sampled second crashes during recovery resume too.
   - A finished run resumes to no work at all.
   - Mutation-checked: writing the table one operation behind fails.
-- [~] **8.5** `cargo xtask boot-proof` runs the reference move end to end in a VM with a real power cut at ~9% and verifies every file hash, the table, GRUB and boot order (first green 2026-10-26). Still to add: both directions, random layouts, and NTFS/Btrfs/XFS/swap in the same run.
+- [~] **8.5** `cargo xtask boot-proof` runs the reference move end to end in a VM with a real power cut at ~9% and verifies every file hash, the table, GRUB and boot order (first green 2026-10-26). Still to add: both directions, random layouts, deleting a partition, and NTFS/Btrfs/XFS/swap in the same run.
 - [ ] **8.6** Cancel and undo: cancelling before step 3 is free; "Undo last change" runs the reverse plan when the space allows.
 
 ### Phase 9 — Preflight checks
