@@ -13,7 +13,7 @@ use bootshift_boot::initramfs::MODULE_LIST_PATH;
 use bootshift_core::layout::Guid;
 use bootshift_disk::{Access, RealDevice};
 use bootshift_engine::copier::{CopyOptions, MAX_CHUNK, ProgressSink};
-use bootshift_engine::recovery;
+use bootshift_engine::recovery::{self, RecoveryError};
 use bootshift_fs::run::{CommandLine, Runner, SystemRunner};
 use rustix::mount::{MountFlags, mount};
 use rustix::system::{RebootCommand, reboot};
@@ -48,6 +48,18 @@ pub fn run_as_init() -> ! {
     match outcome {
         Ok(()) => {
             say("Done. Restarting into your system.");
+            rustix::fs::sync();
+            let _ = reboot(RebootCommand::Restart);
+        }
+        Err(error)
+            if error
+                .downcast_ref::<RecoveryError>()
+                .is_some_and(RecoveryError::left_disk_untouched) =>
+        {
+            say(&format!("BootShift stopped: {error:#}"));
+            say("Nothing on the disk was changed. Press Enter to restart into your system;");
+            say("it restarts by itself in five minutes.");
+            wait_for_enter_or(ERROR_SCREEN_WAIT);
             rustix::fs::sync();
             let _ = reboot(RebootCommand::Restart);
         }

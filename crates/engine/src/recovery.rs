@@ -15,7 +15,7 @@ use bootshift_fs::probe::partition_path;
 use bootshift_fs::run::{RunError, Runner};
 
 use crate::copier::{CopyOptions, ProgressSink};
-use crate::executor::{ExecError, execute};
+use crate::executor::{ExecError, check_table_writes, execute};
 use crate::run_plan::{BootRestore, RunPlan};
 use crate::system_filesystems::SystemFilesystems;
 
@@ -37,6 +37,18 @@ pub enum RecoveryError {
         "the partition table changed after the plan was made, so nothing was touched and normal booting is restored; plan again"
     )]
     LayoutChanged,
+    #[error(
+        "the plan can't be carried out on this disk ({0}), so nothing was touched and normal booting is restored"
+    )]
+    CantCarryOut(#[source] ExecError),
+}
+
+impl RecoveryError {
+    /// Whether recovery stopped before its first write and put normal booting back, so the
+    /// computer can simply restart into its system.
+    pub fn left_disk_untouched(&self) -> bool {
+        matches!(self, Self::LayoutChanged | Self::CantCarryOut(_))
+    }
 }
 
 /// Whether `device` holds the GPT with this disk GUID.
@@ -60,10 +72,19 @@ pub fn run(
     let run = RunPlan::from_record(&opened.plan)?;
     let mut journal = opened.journal;
 
-    if opened.progress.is_none() && !table_matches(&disk, &run)? {
-        restore_booting(runner, disk_path, &run.boot, &work_dir.join("esp"))?;
-        journal.commit(&mut disk, &done())?;
-        return Err(RecoveryError::LayoutChanged);
+    if opened.progress.is_none() {
+        let refusal = if !table_matches(&disk, &run)? {
+            Some(RecoveryError::LayoutChanged)
+        } else {
+            check_table_writes(&disk, &run.layout, &run.plan)
+                .err()
+                .map(RecoveryError::CantCarryOut)
+        };
+        if let Some(refusal) = refusal {
+            restore_booting(runner, disk_path, &run.boot, &work_dir.join("esp"))?;
+            journal.commit(&mut disk, &done())?;
+            return Err(refusal);
+        }
     }
 
     let mut filesystems = SystemFilesystems::new(

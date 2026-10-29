@@ -14,7 +14,7 @@
 
 use bootshift_core::journal::{MAX_SCOPE_RANGES, Progress, Stage};
 use bootshift_core::layout::{Content, Guid, Layout, Partition};
-use bootshift_core::plan::{ApplyError, Operation};
+use bootshift_core::plan::{ApplyError, Operation, Plan};
 use bootshift_core::scope::CopyScope;
 use bootshift_disk::{BlockDevice, DiskError, GptError, GptImage, Journal, JournalError};
 use bootshift_fs::run::RunError;
@@ -80,8 +80,8 @@ pub fn execute<D: BlockDevice + ?Sized, F: Filesystems>(
         journal,
         filesystems,
         run,
-        layouts: layouts_after_each_operation(run)?,
-        removable: removed_swaps(run),
+        layouts: layouts_after_each_operation(&run.layout, &run.plan)?,
+        removable: removed_partitions(&run.plan),
         options,
         sink,
     };
@@ -310,9 +310,24 @@ impl<D: BlockDevice + ?Sized, F: Filesystems> Executor<'_, D, F> {
     }
 }
 
-fn layouts_after_each_operation(run: &RunPlan) -> Result<Vec<Layout>, ApplyError> {
-    let mut layouts = vec![run.layout.clone()];
-    for operation in &run.plan.operations {
+/// Builds, in memory, every partition table `plan` will write to `disk`, so a plan that can't be
+/// carried out is refused before the first write rather than stopping part way through.
+pub fn check_table_writes<D: BlockDevice + ?Sized>(
+    disk: &D,
+    layout: &Layout,
+    plan: &Plan,
+) -> Result<(), ExecError> {
+    let removable = removed_partitions(plan);
+    let mut table = GptImage::read(disk)?;
+    for after in layouts_after_each_operation(layout, plan)?.iter().skip(1) {
+        table = table.with_partitions(&after.partitions, &removable)?;
+    }
+    Ok(())
+}
+
+fn layouts_after_each_operation(layout: &Layout, plan: &Plan) -> Result<Vec<Layout>, ApplyError> {
+    let mut layouts = vec![layout.clone()];
+    for operation in &plan.operations {
         let mut next = layouts[layouts.len() - 1].clone();
         next.apply(operation)?;
         layouts.push(next);
@@ -320,12 +335,14 @@ fn layouts_after_each_operation(run: &RunPlan) -> Result<Vec<Layout>, ApplyError
     Ok(layouts)
 }
 
-fn removed_swaps(run: &RunPlan) -> Vec<Guid> {
-    run.plan
-        .operations
+/// The partitions whose table entries this run removes: deleted ones, and swaps it sets aside.
+fn removed_partitions(plan: &Plan) -> Vec<Guid> {
+    plan.operations
         .iter()
         .filter_map(|operation| match operation {
-            Operation::RemoveSwap { partition } => Some(*partition),
+            Operation::RemoveSwap { partition } | Operation::Delete { partition } => {
+                Some(*partition)
+            }
             _ => None,
         })
         .collect()

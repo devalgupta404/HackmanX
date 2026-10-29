@@ -12,10 +12,11 @@ use bootshift_core::planner::plan;
 use bootshift_core::scope::CopyScope;
 use bootshift_core::units::{Lba, Sectors};
 use bootshift_disk::{
-    BlockDevice, CrashDisk, FileExtent, GptImage, Journal, JournalFile, MemDisk, PendingWrites,
+    BlockDevice, CrashDisk, FileExtent, GptError, GptImage, Journal, JournalFile, MemDisk,
+    PendingWrites,
 };
 use bootshift_engine::copier::{CopyOptions, SilentProgress};
-use bootshift_engine::executor::{Filesystems, execute};
+use bootshift_engine::executor::{ExecError, Filesystems, check_table_writes, execute};
 use bootshift_engine::run_plan::{BootRestore, RunPlan};
 use bootshift_fs::run::RunError;
 use gptman::{GPT, GPTPartitionEntry};
@@ -303,6 +304,99 @@ fn every_crash_during_a_run_resumes_to_the_same_result() {
             assert_finished(&image, &format!("crash at point {point} with {outcome:?}"));
         }
     }
+}
+
+/// Delete Windows, then move Linux left into its space and grow it up to swap.
+fn delete_windows_target(layout: &Layout) -> Target {
+    let guid = |number: u32| Guid([number as u8 + 0x10; 16]);
+    let mut target: Target = layout
+        .partitions
+        .iter()
+        .map(|p| (p.unique_guid, p.extent))
+        .collect();
+    target.remove(&guid(2));
+    target.insert(guid(3), Extent::new(Lba(10_496), Sectors(128)));
+    target
+}
+
+fn delete_windows_run() -> RunPlan {
+    let layout = layout();
+    let plan = plan(&layout, &delete_windows_target(&layout)).unwrap();
+    RunPlan { plan, ..run_plan() }
+}
+
+fn assert_windows_deleted(disk: &MemDisk, context: &str) {
+    let target = delete_windows_target(&layout());
+    let entries = GptImage::read(disk).unwrap().entries().unwrap();
+    let extents: BTreeMap<Guid, Extent> =
+        entries.iter().map(|e| (e.unique_guid, e.extent)).collect();
+    assert_eq!(extents, target, "{context}: table is not the target");
+    for offset in 0..LINUX.2 * SECTOR / 2 {
+        assert_eq!(
+            disk.bytes()[(10_496 * SECTOR + offset) as usize],
+            pattern(LINUX.0, offset),
+            "{context}: Linux byte {offset} was not moved intact"
+        );
+    }
+}
+
+#[test]
+fn deleting_a_partition_frees_its_space_for_the_next_move() {
+    let mut disk = fresh_disk(&delete_windows_run());
+
+    let filesystems = resume(&mut disk);
+
+    assert_windows_deleted(&disk, "uninterrupted run");
+    assert_eq!(
+        filesystems.calls,
+        ["used 3", "grow 3 to 128", "check 3 (resized)"]
+    );
+}
+
+#[test]
+fn every_crash_while_deleting_and_moving_resumes_to_the_same_result() {
+    let mut recorded = CrashDisk::new(fresh_disk(&delete_windows_run()));
+    resume(&mut recorded);
+
+    let outcomes = [PendingWrites::Lost, PendingWrites::AllLanded]
+        .into_iter()
+        .chain((0..4).map(|seed| PendingWrites::Scrambled { seed }));
+    for outcome in outcomes {
+        for point in recorded.crash_points() {
+            let mut image = recorded.crash_image(point, outcome);
+            resume(&mut image);
+            assert_windows_deleted(&image, &format!("crash at point {point} with {outcome:?}"));
+        }
+    }
+}
+
+#[test]
+fn every_table_of_a_workable_plan_can_be_built_before_any_write() {
+    for run in [run_plan(), delete_windows_run()] {
+        let disk = fresh_disk(&run);
+        let before = disk.clone();
+
+        check_table_writes(&disk, &run.layout, &run.plan).unwrap();
+
+        assert!(disk == before);
+    }
+}
+
+#[test]
+fn a_plan_that_leaves_a_table_entry_unaccounted_for_is_refused_before_any_write() {
+    let disk = fresh_disk(&run_plan());
+    let mut layout = layout();
+    layout.partitions.retain(|p| p.number != SWAP.0);
+    let mut target = target(&layout);
+    target.retain(|guid, _| layout.partition(*guid).is_some());
+    let plan = plan(&layout, &target).unwrap();
+
+    let result = check_table_writes(&disk, &layout, &plan);
+
+    assert!(matches!(
+        result,
+        Err(ExecError::Table(GptError::UnknownPartition(_)))
+    ));
 }
 
 #[test]
