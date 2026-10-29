@@ -95,7 +95,7 @@ pub fn disks(runner: &dyn Runner) -> Result<Vec<DiskInfo>, RunError> {
             build_disks(groups, |_, device| device.start)
                 .map_err(|detail| unexpected(&command, detail))
         }
-        Err(RunError::Failed { stderr, .. }) if stderr.contains("unknown column") => {
+        Err(RunError::Failed { explanation, .. }) if explanation.contains("unknown column") => {
             compat_disks(runner)
         }
         Err(error) => Err(error),
