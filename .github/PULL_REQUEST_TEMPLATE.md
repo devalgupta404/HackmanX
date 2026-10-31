@@ -1,5 +1,5 @@
 <!--
-Thanks for contributing to BootShift. Please read CONTRIBUTING.md first.
+Thanks for contributing to Kitten. Please read CONTRIBUTING.md first.
 Keep PRs small and focused. Do not mix refactors with behaviour changes.
 -->
 

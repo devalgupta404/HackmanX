@@ -11,7 +11,7 @@ const BITMAP_RECORD: &str = "6";
 
 /// Whether the volume may carry its "needs checking" mark.
 ///
-/// `ntfsresize` always sets the mark, so after BootShift's own resize it is expected. On a
+/// `ntfsresize` always sets the mark, so after Kitten's own resize it is expected. On a
 /// volume as found, it means Windows wasn't shut down cleanly, and the volume is refused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DirtyMark {

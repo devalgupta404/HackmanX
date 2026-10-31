@@ -42,7 +42,7 @@ fn home(ui: &mut Ui, app: &App) {
     readout_texts(
         ui,
         &[
-            "Pick a goal on the left, and BootShift builds the change for you.",
+            "Pick a goal on the left, and Kitten builds the change for you.",
             "Nothing touches the disk until you have seen the plan and the checks pass.",
         ],
     );
@@ -393,7 +393,7 @@ fn checks(ui: &mut Ui, app: &App) {
     readout_texts(
         ui,
         &[
-            "BootShift copies its recovery system onto the EFI partition and points the next boot at it. Your disk is not touched yet.",
+            "Kitten copies its recovery system onto the EFI partition and points the next boot at it. Your disk is not touched yet.",
             "The work happens during the restart you choose, before any operating system starts.",
         ],
     );
@@ -404,7 +404,7 @@ fn restart(ui: &mut Ui) {
     readout_texts(
         ui,
         &[
-            "Turn the computer back on. BootShift reads its journal, finds the last chunk the drive confirmed, and carries on from there.",
+            "Turn the computer back on. Kitten reads its journal, finds the last chunk the drive confirmed, and carries on from there.",
             "A half-written chunk is simply redone: a chunk is never larger than the distance it moves, so it can never overwrite its own source.",
         ],
     );

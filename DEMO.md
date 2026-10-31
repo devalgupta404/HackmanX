@@ -1,4 +1,4 @@
-# BootShift demo
+# Kitten demo
 
 Everything below runs the real engine on a real disk. There is no mock: a throwaway Ubuntu VM
 boots with UEFI firmware, its own SATA disk, and the same static `bootshift` binary that would
@@ -61,7 +61,7 @@ sudo bootshift probe /dev/sda
 ```
 
 Point at the data partition: 7 GiB, Btrfs, sitting after a gap, with free space behind it. Then
-show that BootShift is honest about what it is going to do before it touches a byte:
+show that Kitten is honest about what it is going to do before it touches a byte:
 
 ```bash
 sudo bootshift plan /dev/sda /home/ubuntu/move-left.json
@@ -89,7 +89,7 @@ sudo reboot
 boot order so the next restart lands in recovery instead of Ubuntu. Nothing on the data partition
 has moved yet: data first, table last.
 
-Now watch the VM window. The machine reboots into the BootShift recovery console and starts moving
+Now watch the VM window. The machine reboots into the Kitten recovery console and starts moving
 the partition. Because there is roughly 700 MiB of real data to copy, **the progress bar climbs for
 about twenty-five seconds, not a blink**. Narrate it: "every chunk it marks done is a chunk already
 verified in its new home. The bar can't lie about progress a power cut would undo." When it finishes
@@ -208,7 +208,7 @@ is the whole point. To watch the first recovery run finish without the cut, add 
 ## Honest caveats (say these before you are asked)
 
 - **Shrinking ext4 and NTFS is not in this build.** Their offline resizers are not crash-safe on
-  their own, so BootShift wraps them in a guarded run (an undo log the kernel replays after a power
+  their own, so Kitten wraps them in a guarded run (an undo log the kernel replays after a power
   cut). The undo core is built and crash-tested; the kernel transport is still in progress. Until
   then, this build refuses to shrink ext4 or NTFS, with a plain message, rather than risk it. Btrfs
   shrinks today, which is why the demo uses it.
@@ -219,5 +219,5 @@ is the whole point. To watch the first recovery run finish without the cut, add 
   same way, but proving a real Windows 11 install still boots after a move is validation we have not
   finished. We list it as an open risk, not a solved problem.
 - **Why not just GParted?** GParted is the engine room: it needs a live USB and it dies with the
-  power. BootShift is the layer above that plans the change, applies it in one restart with no
+  power. Kitten is the layer above that plans the change, applies it in one restart with no
   external media, and treats a power cut as a normal event to resume from, not a disaster.

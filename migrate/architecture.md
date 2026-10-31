@@ -1,4 +1,4 @@
-# BootShift Migrate — Architecture
+# Kitten Migrate — Architecture
 
 How the service is put together, how data moves, and what happens when any part fails. Read `plan.md` first for the problem, the research and the safety rules (M1–M11) referred to here.
 
@@ -9,7 +9,7 @@ How the service is put together, how data moves, and what happens when any part 
 ```
  SOURCE (old VM, running, busy)                          TARGET (new VM, larger disk)
  ─────────────────────────────                           ─────────────────────────────
- bootshift-migrate send   (static musl binary, root)     boots the BootShift receiver image
+ bootshift-migrate send   (static musl binary, root)     boots the Kitten receiver image
  ┌───────────────────────────────────────┐               ┌───────────────────────────────────────┐
  │ Probe + preflight                     │               │ Preflight (disk, firmware, space)      │
  │ Tracker  ── eBPF │ LVM mirror │ none   │               │ Receiver                               │
@@ -23,7 +23,7 @@ How the service is put together, how data moves, and what happens when any part 
        bootshiftd ── GUI                                   target disk (data)   scratch disk (state)
 ```
 
-**One binary, two roles.** As in BootShift itself, the same `bootshift-migrate` binary runs as `send` on the source and as `receive` inside the receiver image on the target. The pure logic (protocol, convergence model, state machines, layout plan) is shared and tested once.
+**One binary, two roles.** As in Kitten itself, the same `bootshift-migrate` binary runs as `send` on the source and as `receive` inside the receiver image on the target. The pure logic (protocol, convergence model, state machines, layout plan) is shared and tested once.
 
 **Who decides what:**
 - **The receiver holds the truth about the target.** That covers what is written, verified and durable.
@@ -36,16 +36,16 @@ How the service is put together, how data moves, and what happens when any part 
 
 | Shape | How the target runs the receiver | Notes |
 |---|---|---|
-| KVM/Proxmox/libvirt → same | Attach the receiver ISO (or boot the BootShift recovery image from a small disk) on the new VM | Fastest; kexec avoids firmware POST |
+| KVM/Proxmox/libvirt → same | Attach the receiver ISO (or boot the Kitten recovery image from a small disk) on the new VM | Fastest; kexec avoids firmware POST |
 | Hypervisor A → B (VMware → KVM, Hyper-V → KVM) | Receiver ISO on the new VM | Guest changes for the new hardware (A8.3) do the driver work |
 | Cloud → cloud, on-prem → cloud | Receiver as a bootable cloud image, booted from a small boot disk; the data disk is attached as a second volume | Scratch state lives on the boot disk |
-| Bare metal → VM or bare metal | Receiver ISO or PXE | Same as BootShift's recovery boot |
+| Bare metal → VM or bare metal | Receiver ISO or PXE | Same as Kitten's recovery boot |
 
 **Disks on the target:**
 - **Data disk:** the new, larger disk the machine will run from.
 - **Scratch device:** holds the receiver journal, hash index, intent log and receipt. Preferably a separate small disk (≥ 1 GiB per TiB of data). If none is available, a reserved region at the end of the data disk that the layout plan leaves unused until finalize; it is released when finalize grows the last partition.
 
-The scratch device is written raw with `O_DIRECT` + `fdatasync`, never through a filesystem (BootShift invariant 9's reasoning).
+The scratch device is written raw with `O_DIRECT` + `fdatasync`, never through a filesystem (Kitten invariant 9's reasoning).
 
 ---
 
@@ -66,7 +66,7 @@ All checks run before the first byte moves (M2). Each refusal carries a reason a
 - Data disk ≥ the source's used size plus metadata. If it is smaller than the source disk, the layout plan must fit it (shrink is a non-goal, so the plan refuses).
 - Firmware type matches what the source boots (UEFI vs BIOS). A mismatch is refused unless the plan includes a bootloader conversion (later).
 - Scratch device present, at least the required size, and not the data disk unless the end-region mode was chosen.
-- SMART or virtual-disk health; no USB bridge (BootShift rule).
+- SMART or virtual-disk health; no USB bridge (Kitten rule).
 - The network link's measured round-trip time and throughput feed the forecast.
 
 ---
@@ -106,7 +106,7 @@ For each batch of incoming chunk frames, in stream order:
 
 **Ordering inside the data disk:** later passes overwrite earlier ones at the same offset. Frames are applied strictly in sequence order over one TCP stream, so the last write wins. Writes in a batch never overlap; the sender merges duplicates before sending.
 
-Unlike BootShift's in-place move, the target never overlaps the source, so batching is safe. BootShift's invariant 4 (one unrecorded write at a time) exists only because a move's destination can overlap its own source. Here the only rule is: acknowledge after everything is durable.
+Unlike Kitten's in-place move, the target never overlaps the source, so batching is safe. Kitten's invariant 4 (one unrecorded write at a time) exists only because a move's destination can overlap its own source. Here the only rule is: acknowledge after everything is durable.
 
 ### A4.3 Hash index and Merkle root
 
@@ -296,14 +296,14 @@ The fence is **cooperative software, not fencing hardware or a quorum**, so it i
 
 ## A8. Target finalize
 
-All steps are journaled and idempotent, like BootShift's executor steps.
+All steps are journaled and idempotent, like Kitten's executor steps.
 
 1. **Layout (before the first byte):**
    - The plan maps each source partition to a target extent.
    - The default keeps every partition at its source offset and lets the last partition, or a chosen one, grow into the new space.
    - Moving partitions is allowed because the target is empty: the map is a list of (source range → target range).
-   - GPT: same disk GUID and PARTUUIDs, new sizes, and the backup header at the new end of disk (written backup first, flushed, then primary, as in BootShift).
-2. **Grow** with the BootShift `fs` adapters:
+   - GPT: same disk GUID and PARTUUIDs, new sizes, and the backup header at the new end of disk (written backup first, flushed, then primary, as in Kitten).
+2. **Grow** with the Kitten `fs` adapters:
    - ext4: `resize2fs` offline in the receiver (grow is safe);
    - XFS: `xfs_growfs`, mounted in the receiver;
    - Btrfs: `btrfs filesystem resize max`;
@@ -317,7 +317,7 @@ All steps are journaled and idempotent, like BootShift's executor steps.
    - serial console on.
 
    The diff is shown and stored with the receipt.
-4. **Boot:** `kexec_file_load` the replica's own signed kernel and initramfs with its command line. If kexec is refused, set the firmware boot entry (BootShift `efi`), reboot, and run a boot health check: SSH or agent heartbeat plus user-defined service checks. If the health check fails, the undo log can revert the guest changes for a retry. The source is still intact.
+4. **Boot:** `kexec_file_load` the replica's own signed kernel and initramfs with its command line. If kexec is refused, set the firmware boot entry (Kitten `efi`), reboot, and run a boot health check: SSH or agent heartbeat plus user-defined service checks. If the health check fails, the undo log can revert the guest changes for a retry. The source is still intact.
 
 ---
 
@@ -342,7 +342,7 @@ Deleting the snapshot leaves the replica untouched; Phase 0.7 checks this throug
 After `Committed`, the source is frozen or powered off and unchanged. The background verify:
 1. reads every chunk of the source:
    - frozen: read in place;
-   - powered off: boot it into the BootShift recovery image read-only, or attach its volume to a helper;
+   - powered off: boot it into the Kitten recovery image read-only, or attach its volume to a helper;
 2. hashes it;
 3. compares it with the **receipt's index snapshot**, not the live target, which is already taking new writes.
 
@@ -380,9 +380,9 @@ All equal: the receipt is marked `Verified` and the user can retire the source. 
 
 ---
 
-## A13. How it fits BootShift
+## A13. How it fits Kitten
 
-| Need | Reused from BootShift | New |
+| Need | Reused from Kitten | New |
 |---|---|---|
 | Durable, aligned raw I/O | `bootshift-disk::RealDevice`, `BlockDevice` | — |
 | Crash testing | `MemDisk`, `CrashDisk`, `FaultyDisk` | `LiveDisk`, `FaultyLink` |
@@ -394,4 +394,4 @@ All equal: the receipt is marked `Verified` and the user can retire the source. 
 | Boot entries, recovery image | `bootshift-boot` | Receiver image variant, kexec |
 | GUI / D-Bus | `bootshiftd`, `bootshift-gui` | Migrate screens and methods |
 
-**Dependency direction:** `bootshift-core` ← `migrate-core` ← `migrate-track`, `migrate-net` ← `migrate-send`, `migrate-receive` ← `migrate-cli`. `migrate-receive` also uses `bootshift-disk`, `bootshift-fs` and `bootshift-boot`. Nothing in BootShift depends on `migrate-*`.
+**Dependency direction:** `bootshift-core` ← `migrate-core` ← `migrate-track`, `migrate-net` ← `migrate-send`, `migrate-receive` ← `migrate-cli`. `migrate-receive` also uses `bootshift-disk`, `bootshift-fs` and `bootshift-boot`. Nothing in Kitten depends on `migrate-*`.

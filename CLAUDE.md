@@ -1,6 +1,6 @@
-# BootShift
+# Kitten
 
-BootShift rearranges disk partitions by dragging them in a window. The change is applied in one restart, with no USB stick, and a power cut at any moment must not lose data.
+Kitten rearranges disk partitions by dragging them in a window. The change is applied in one restart, with no USB stick, and a power cut at any moment must not lose data.
 
 - **Plan of record:** `task.md`. Pick the next unchecked task in order, and mark it `[x]` only when its tests pass. Section 1 of `task.md` overrides the original PDF design.
 - **Open source:** the code is read by strangers, so it must be plain and obvious.

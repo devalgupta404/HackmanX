@@ -248,7 +248,7 @@ fn checks(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
     header(
         ui,
         "Safety checks",
-        "All of them pass, or BootShift writes nothing at all.",
+        "All of them pass, or Kitten writes nothing at all.",
         narrow,
     );
     if !app.checks.is_empty() {
@@ -421,7 +421,7 @@ fn home(ui: &mut Ui, app: &App, actions: &mut Vec<Action>, narrow: bool) {
     header(
         ui,
         "What would you like to do?",
-        "BootShift works out the safe way to do it, and shows you before anything changes.",
+        "Kitten works out the safe way to do it, and shows you before anything changes.",
         narrow,
     );
     goal_card(ui, app, Goal::InstallOs, true, actions);
@@ -558,7 +558,7 @@ fn goal_heading(goal: Goal) -> (&'static str, &'static str) {
     match goal {
         Goal::InstallOs => (
             "Install an operating system",
-            "Choose where to take the space from and how much, and BootShift frees a clean block.",
+            "Choose where to take the space from and how much, and Kitten frees a clean block.",
         ),
         Goal::GiveSpace => (
             "Give a partition more space",
@@ -1036,7 +1036,7 @@ fn restart(ui: &mut Ui, app: &App, narrow: bool) {
         header(
             ui,
             "During the restart",
-            "This is what the computer shows while BootShift works, before any operating system starts.",
+            "This is what the computer shows while Kitten works, before any operating system starts.",
             narrow,
         );
         if let Some(run) = &app.run {
@@ -1056,9 +1056,9 @@ fn restart(ui: &mut Ui, app: &App, narrow: bool) {
     let width = ui.available_width().min(layout::LEDE_MAX);
     widgets::paragraph(
         ui,
-        "The move runs in BootShift's recovery system, before any operating system starts, so it \
+        "The move runs in Kitten's recovery system, before any operating system starts, so it \
          appears on the machine's own screen, not in this window. If the power goes out, just turn \
-         the computer back on; it resumes from the journal by itself. Reopen BootShift afterwards \
+         the computer back on; it resumes from the journal by itself. Reopen Kitten afterwards \
          to see the new layout.",
         size::LEDE,
         theme::DIM,

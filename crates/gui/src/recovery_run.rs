@@ -144,7 +144,7 @@ impl RecoveryRun {
         let story = [
             (
                 false,
-                "power restored. firmware hands over to BootShift recovery.".to_string(),
+                "power restored. firmware hands over to Kitten recovery.".to_string(),
             ),
             (
                 false,

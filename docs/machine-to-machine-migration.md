@@ -1,6 +1,6 @@
-# Idea: Machine-to-machine migration with BootShift
+# Idea: Machine-to-machine migration with Kitten
 
-A handoff note for a new working session. It describes the idea, the market it enters and why BootShift's pipeline gives it an edge. It is not an implementation plan.
+A handoff note for a new working session. It describes the idea, the market it enters and why Kitten's pipeline gives it an edge. It is not an implementation plan.
 
 > **Canonical design is `migrate/plan.md` + `architecture.md` + `implementation.md`; this note is superseded by them.** Competitive claims below were re-verified against vendor docs in October 2026 and corrected: the three differentiators that actually hold are **reshape**, **signed proof**, and a **read-only (never-written) source**. "Nothing installed on the old machine" was an overclaim — v1 runs a root binary to *read* the source; it is agentless in the sense of *no kernel module and no writes to the source*, not *no software run*.
 
@@ -38,9 +38,9 @@ Zero downtime isn't the claim. Some downtime always happens at the switchover. T
 
 **Common pattern:** copy everything once → keep sending changes → optionally test → short final sync and switch.
 
-## Our idea: BootShift Migrate
+## Our idea: Kitten Migrate
 
-Offer the same four steps, for **any machine to any machine**: bare metal, any VM, any cloud. Build it on the engine BootShift already has.
+Offer the same four steps, for **any machine to any machine**: bare metal, any VM, any cloud. Build it on the engine Kitten already has.
 
 1. **Copy while the old machine runs.** Copy only the space that's in use, not the whole disk.
 2. **Keep up with new writes.**
@@ -56,18 +56,18 @@ Offer the same four steps, for **any machine to any machine**: bare metal, any V
 ## Why it can beat them (the USP)
 
 1. **No kernel module, and the source is read-only.** The agent is a single static binary that *reads* the source: no kernel driver, no packages, and it never writes the source's data. (Competitors install an in-guest agent, or snapshot the source datastore each cycle.) This suits machines that are frozen or out of support, which is exactly when people migrate. ("Nothing installed" was an overclaim; the honest version is *no kernel module, source never written*.)
-2. **Survives a power cut or network drop.** BootShift's journal already resumes from the last finished piece, and its crash tests cover every write. Competitors resync or start over.
+2. **Survives a power cut or network drop.** Kitten's journal already resumes from the last finished piece, and its crash tests cover every write. Competitors resync or start over.
 3. **Proof, not a promise.** Every piece is read back and checked, and a chain of hashes produces a signed receipt showing that the new machine matches the old one at switchover. **No migration product ships a receipt anyone can re-verify:** Azure checksums internally and keeps nothing, and everywhere else integrity validation is a manual step. Useful for audits and compliance.
 4. **Rehearsal anywhere.** AWS only lets you test inside AWS, and Move has no rehearsal at all. We rehearse on the target machine itself, and can include the OS upgrade.
-5. **The new disk doesn't have to match, and we reshape it automatically.** BootShift's planner resizes and rearranges partitions and grows filesystems as part of the migration, so a different size or layout is fine. Competitors clone at the source size, or (MGN) hand you a bigger raw volume you must grow by hand; none reshape the layout. Disk and partition IDs stay the same, so the system still boots.
+5. **The new disk doesn't have to match, and we reshape it automatically.** Kitten's planner resizes and rearranges partitions and grows filesystems as part of the migration, so a different size or layout is fine. Competitors clone at the source size, or (MGN) hand you a bigger raw volume you must grow by hand; none reshape the layout. Disk and partition IDs stay the same, so the system still boots.
 6. **Seconds of downtime, and an easy undo.** The old machine is never modified after the switchover pause, so going back is just turning it on again.
 7. **No lock-in.** Open source, and any target works.
 
 **Pitch:** *Migrate any Linux machine onto any new disk — automatically reshaped and grown to fit — with a signed receipt proving it is byte-for-byte identical, and the source never written, so rollback is one power button. No kernel module; survives power cuts.*
 
-## What BootShift already brings
+## What Kitten already brings
 
-| Need | Already in BootShift |
+| Need | Already in Kitten |
 |---|---|
 | Safe, resumable, verified copying | The copier and journal |
 | Copying only used space | The filesystem adapters |
@@ -96,7 +96,7 @@ Offer the same four steps, for **any machine to any machine**: bare metal, any V
 - Who is the first customer: home users moving to a new laptop, small businesses, or data centres retiring servers?
 - Is an OS upgrade (for example Ubuntu 22.04 → 24.04) part of the offer, or only moving the machine as it is?
 - Do we support Windows as a source, or Linux only at first?
-- Should the "verified switchover" (longer pause, full comparison) or the "fast switchover" (seconds) be the default? BootShift's one rule, never lose data, argues for verified by default with fast as an opt-in.
+- Should the "verified switchover" (longer pause, full comparison) or the "fast switchover" (seconds) be the default? Kitten's one rule, never lose data, argues for verified by default with fast as an opt-in.
 
 ## References
 

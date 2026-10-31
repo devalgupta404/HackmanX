@@ -124,11 +124,11 @@ impl SaveDialog {
                 std::io::ErrorKind::AlreadyExists => {
                     "A file with that name is already there. Pick another name.".to_string()
                 }
-                _ => format!("BootShift couldn't write {}: {error}.", path.display()),
+                _ => format!("Kitten couldn't write {}: {error}.", path.display()),
             })?;
         file.write_all(text.as_bytes())
             .and_then(|()| file.sync_all())
-            .map_err(|error| format!("BootShift couldn't write {}: {error}.", path.display()))?;
+            .map_err(|error| format!("Kitten couldn't write {}: {error}.", path.display()))?;
         Ok(path)
     }
 }

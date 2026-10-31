@@ -1,6 +1,6 @@
 //! Sending the machine into the recovery system through the distro's own signed GRUB.
 //!
-//! Signed GRUB reads its config only from `EFI/<vendor>/grub.cfg` on the ESP, so BootShift
+//! Signed GRUB reads its config only from `EFI/<vendor>/grub.cfg` on the ESP, so Kitten
 //! replaces that file with one that boots the recovery kernel, keeping the original beside it.
 //! Every way of reaching the distro's shim (its boot entry, a reset boot order, the fallback
 //! loader) then lands in recovery until the original is put back.

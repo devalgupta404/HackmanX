@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-/// A disk that BootShift reads and writes. Every byte the engine changes goes through this trait.
+/// A disk that Kitten reads and writes. Every byte the engine changes goes through this trait.
 ///
 /// Offsets and lengths must be multiples of [`BlockDevice::logical_block_size`], the same rule
 /// `O_DIRECT` enforces on real devices, so in-memory test disks catch misaligned I/O too.

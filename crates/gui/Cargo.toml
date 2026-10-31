@@ -1,6 +1,6 @@
 [package]
 name = "bootshift-gui"
-description = "The BootShift desktop app: arrange partitions by dragging them"
+description = "The Kitten desktop app: arrange partitions by dragging them"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

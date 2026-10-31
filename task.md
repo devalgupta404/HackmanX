@@ -1,7 +1,7 @@
-# BootShift — Task Plan
+# Kitten — Task Plan
 
-Ordered work plan for BootShift, from an empty repo to a release tested on real laptops.
-The design is in `BootShift Architecture Plan.pdf` (not in the repo yet). Section 1 lists where research changed that design; when the two disagree, **this file wins**.
+Ordered work plan for Kitten, from an empty repo to a release tested on real laptops.
+The design is in `Kitten Architecture Plan.pdf` (not in the repo yet). Section 1 lists where research changed that design; when the two disagree, **this file wins**.
 
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done.
 
@@ -24,7 +24,7 @@ There is one plan and one product: a ready-to-ship tool, run from Linux, that ca
 **Refused, with a reason and a fix:**
 - BitLocker volumes ("Turn off device encryption").
 - Hibernated Windows or Fast Startup.
-- Legacy BIOS or MBR disks (BootShift needs UEFI + GPT).
+- Legacy BIOS or MBR disks (Kitten needs UEFI + GPT).
 - systemd-boot with signed unified kernel images under Secure Boot (our initramfs can't be signed).
 - USB-attached disks.
 - Disks with SMART warnings.
@@ -66,7 +66,7 @@ These are the results of the research pass on 2026-10-25. Each item is a correct
 ### 1.4 Boot path
 
 13. **We can't copy signed GRUB into our own folder.** Its config path is compiled in (`/EFI/ubuntu`, `/EFI/fedora`).
-    - Instead, temporarily replace the distro's ESP stub `EFI/<vendor>/grub.cfg` with a BootShift config that boots `EFI/bootshift/vmlinuz` + `initrd.img`. Keep the original as `grub.cfg.bootshift-orig`.
+    - Instead, temporarily replace the distro's ESP stub `EFI/<vendor>/grub.cfg` with a Kitten config that boots `EFI/bootshift/vmlinuz` + `initrd.img`. Keep the original as `grub.cfg.bootshift-orig`.
     - Every boot path that reaches the distro shim then lands in recovery: the NVRAM entry, a BootOrder reset, or the `fbx64.efi` fallback.
 14. **BootNext alone is unsafe.** It is consumed on the first boot, so after a power cut firmware follows BootOrder again. Set a persistent BootOrder with the distro first and Windows Boot Manager **removed from the order** (the entry itself is kept). Restore both in step 8.
 15. **Secure Boot works as designed.** shim_lock verifies the kernel, not the initrd, so an unsigned initramfs is fine. Lockdown mode doesn't block block-device writes, `O_DIRECT`, BLKPG or efivars. Never ship our own shim, GRUB or kernel modules.
@@ -120,7 +120,7 @@ These are the results of the research pass on 2026-10-25. Each item is a correct
 | GUI | `tauri` 2 |
 | Testing | `proptest`, `proptest-state-machine`, `cargo-fuzz` + `arbitrary`, `tempfile` |
 
-**Licence note:** running GPL tools as separate processes places no obligation on our code. Copying code from sfdisk, GParted, kpmcore or blocks would make BootShift GPL. The initramfs is built on the user's machine from their distro packages, so we never redistribute GPL binaries.
+**Licence note:** running GPL tools as separate processes places no obligation on our code. Copying code from sfdisk, GParted, kpmcore or blocks would make Kitten GPL. The initramfs is built on the user's machine from their distro packages, so we never redistribute GPL binaries.
 
 **Research papers and what each one tells us:**
 
@@ -311,7 +311,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - `info` (`ntfsresize --info --no-action`: cluster size, volume size, minimum size). It fails on hibernated or dirty volumes.
   - `used_ranges` from `$Bitmap` (`ntfscat -i 6`). Refused if the bitmap is shorter than the volume.
   - `resize_offline` (shrink, or grow to fill the partition).
-  - `DirtyMark`: `ntfsresize` always marks the volume for checking, so after BootShift's own resize the mark is expected and `--force` is passed. A volume found dirty is refused.
+  - `DirtyMark`: `ntfsresize` always marks the volume for checking, so after Kitten's own resize the mark is expected and `--force` is passed. A volume found dirty is refused.
   - The boot sector `0x1C` and backup boot-sector fix is a raw write, done in the executor's move step.
 - [~] **7.6** `fs::btrfs`: resize (mounted) and check existed; used ranges from the dev-extent tree (`btrfs inspect-internal dump-tree -t dev`) landed 2026-10-26, with a real-image fixture test; a filesystem spanning several devices falls back to a full copy. Still to prove in the VM: mounted resize in recovery.
 - [~] **7.7** `fs::xfs`: grow (mounted) and check existed; used ranges landed 2026-10-26 as the complement of `xfs_db -r "freesp -d"` over the data area (real-image fixture test; realtime devices and external logs fall back to a full copy). Still to prove in the VM: `xfs_growfs` in recovery.
@@ -320,7 +320,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
 - [~] **7.10** Adapter tests against the real tools.
   - Most adapters work on plain image files, so no root or VM is needed (`crates/fs/tests/{ext4,ntfs}_tools.rs`). CI installs `e2fsprogs` and `ntfs-3g`.
   - ext4: used ranges cover every file block (`debugfs blocks`); an offline shrink keeps every file byte-identical and `e2fsck`-clean.
-  - NTFS: files go in with `ntfscp`, then shrink and grow keep them byte-identical (`ntfscat`); a dirty volume is refused unless BootShift marked it.
+  - NTFS: files go in with `ntfscp`, then shrink and grow keep them byte-identical (`ntfscat`); a dirty volume is refused unless Kitten marked it.
   - End to end (`crates/engine/tests/move_real_filesystems.rs`): real ext4 and NTFS filesystems moved by the copier using only their used ranges, including power cuts mid-move and an `O_DIRECT` image-file run. They check clean and every file reads back unchanged.
     - Mutation-checked: dropping half the used ranges fails.
   - Still needs the VM: mounting (Btrfs, XFS, online ext4 grow), loop devices, and dm-dust.
@@ -455,7 +455,7 @@ These test the assumptions most likely to kill the project. Use VMs, plus one re
   - Partitions smaller than 1% of the disk are drawn above their neighbours so they stay visible. The EFI system and BitLocker partitions are locked.
   - `editing.ts` holds the pure clamping rules mirroring `core::validate` (alignment, minimum size, can grow/shrink, no overlap, stay on the disk), with 12 Vitest tests.
   - Driven in a browser with Playwright against the demo backend: a keyboard shrink, a keyboard move and a mouse edge drag each clamp correctly, and the plan list updates. No console errors.
-  - Restyled 2026-10-26 to the BootShift visual design (midnight/mint, Ubuntu type) as a five-screen flow: arrange, plan, checks, restart (with a live recovery-console preview and a simulated power cut in demo mode), summary.
+  - Restyled 2026-10-26 to the Kitten visual design (midnight/mint, Ubuntu type) as a five-screen flow: arrange, plan, checks, restart (with a live recovery-console preview and a simulated power cut in demo mode), summary.
 - [~] **13.2** (frontend done) Plan preview with the same wording as the CLI and a copy estimate ("Copies about 90.5 GiB, during one restart"). Refusals and unavailable steps are shown with their fixes.
 - [~] **13.3** (frontend done) Backup confirmation checkbox. Apply is enabled only when the plan has steps, nothing is unavailable, the checks passed and the box is ticked. The table-backup download is still to do.
 - [ ] **13.4** Apply → restart; post-restart summary, including the `reagentc` step when the recovery partition moved and the one-time chkdsk note for NTFS.

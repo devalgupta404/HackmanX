@@ -1,4 +1,4 @@
-# BootShift Migrate — demo runbook
+# Kitten Migrate — demo runbook
 
 Everything is screen-recordable. **No reboot** happens in any migration demo, so no camera is
 needed. Each case boots two throwaway VMs, migrates between them, and prints a clear result.
@@ -96,9 +96,9 @@ bootshift-migrate verify-receipt /tmp/receipt.json --target <disk>
 
 ---
 
-## BootShift partition mover (the "reboot" one) — fully recordable
+## Kitten partition mover (the "reboot" one) — fully recordable
 
-This is the original BootShift: drag a partition, apply, and it moves in one restart. The restart is
+This is the original Kitten: drag a partition, apply, and it moves in one restart. The restart is
 the **guest VM rebooting into the recovery console** — it happens inside the QEMU window on your
 screen, so you record that window. **The box itself never reboots; no camera needed.**
 
@@ -110,9 +110,9 @@ cargo xtask demo-gui
 ```
 It boots a guest, starts the real `bootshiftd` helper in it, and prints the command to launch the
 desktop app against the guest's real disk. Then, on screen:
-1. The BootShift window opens — **drag a partition**, run the checks, click apply.
+1. The Kitten window opens — **drag a partition**, run the checks, click apply.
 2. When it says to restart, reboot the guest (command is printed). **The QEMU window shows the
-   BootShift recovery console moving the partition, live** — this is the "reboot bit", on screen.
+   Kitten recovery console moving the partition, live** — this is the "reboot bit", on screen.
 3. After it boots back, reopen the app to show the new layout.
 
 ### B. Crash-safety proof (the showstopper) — ~6 min, automated

@@ -96,7 +96,7 @@ pub struct Geometry {
     pub alignment: Sectors,
 }
 
-/// What a partition holds, which decides what BootShift may do with it.
+/// What a partition holds, which decides what Kitten may do with it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Content {
     EfiSystem,
@@ -106,7 +106,7 @@ pub enum Content {
     Xfs,
     Swap,
     BitLocker,
-    /// Anything BootShift can't read inside (LVM, LUKS, FAT data, unknown). Moved byte for byte.
+    /// Anything Kitten can't read inside (LVM, LUKS, FAT data, unknown). Moved byte for byte.
     Opaque,
 }
 

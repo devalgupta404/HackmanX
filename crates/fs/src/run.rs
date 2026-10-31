@@ -1,4 +1,4 @@
-//! Running external tools. Every program BootShift starts goes through a [`Runner`], so the
+//! Running external tools. Every program Kitten starts goes through a [`Runner`], so the
 //! command line is logged and tests can substitute recorded output.
 
 use std::borrow::Cow;
@@ -73,7 +73,7 @@ pub enum RunError {
         /// What the tool said about the failure.
         explanation: String,
     },
-    #[error("`{command}` printed output BootShift doesn't understand: {detail}")]
+    #[error("`{command}` printed output Kitten doesn't understand: {detail}")]
     UnexpectedOutput { command: String, detail: String },
 }
 
@@ -123,7 +123,7 @@ pub trait Runner {
     }
 }
 
-/// Used when BootShift itself was started without a `PATH`, as PID 1 in the recovery system is.
+/// Used when Kitten itself was started without a `PATH`, as PID 1 in the recovery system is.
 const DEFAULT_PATH: &str = "/usr/sbin:/usr/bin:/sbin:/bin";
 
 /// Runs real programs.

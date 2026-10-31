@@ -1,4 +1,4 @@
-//! Transport for BootShift Migrate: the [`Link`] trait the sender and receiver talk over, and the
+//! Transport for Kitten Migrate: the [`Link`] trait the sender and receiver talk over, and the
 //! in-memory [`FaultyLink`] that stands in for it in tests, able to drop, duplicate and cut frames
 //! and reconnect — the faults a real TLS-over-TCP link suffers (plan.md task 2.3, §I3).
 //!

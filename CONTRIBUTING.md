@@ -1,6 +1,6 @@
-# Contributing to BootShift
+# Contributing to Kitten
 
-Thanks for your interest in BootShift. It moves and resizes disk partitions, so the bar for changes is high: a bug here can destroy someone's data. Please read this before opening a pull request.
+Thanks for your interest in Kitten. It moves and resizes disk partitions, so the bar for changes is high: a bug here can destroy someone's data. Please read this before opening a pull request.
 
 ## The one rule
 

@@ -1,6 +1,6 @@
 # Installed to /usr/lib/systemd/system/. Started by D-Bus activation, not at boot.
 [Unit]
-Description=BootShift partition helper
+Description=Kitten partition helper
 
 [Service]
 Type=dbus

@@ -1,4 +1,4 @@
-//! Boot handling for BootShift: ESP files, the GRUB config redirect, EFI boot order
+//! Boot handling for Kitten: ESP files, the GRUB config redirect, EFI boot order
 //! and the recovery initramfs builder.
 
 pub mod cmdline;
