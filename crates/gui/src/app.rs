@@ -85,11 +85,9 @@ impl Goal {
     pub fn blurb(self) -> &'static str {
         match self {
             Goal::InstallOs => {
-                "Make room for Linux or another OS. BootShift frees a clean block for the installer."
+                "Make room for Linux or another OS. Kitten frees a clean block for the installer."
             }
-            Goal::GiveSpace => {
-                "Pick the one that's full. BootShift finds nearby space and grows it."
-            }
+            Goal::GiveSpace => "Pick the one that's full. Kitten finds nearby space and grows it.",
             Goal::FreeSpace => "Carve some room off a roomy partition to use elsewhere.",
             Goal::MovePartition => {
                 "Slide one along the disk; its contents go nowhere, only its place."
@@ -822,7 +820,7 @@ fn flatten<T>(reply: Result<Reply<T>, BackendError>) -> Result<T, Vec<Refusal>> 
         Ok(Reply::Ok { value }) => Ok(value),
         Ok(Reply::Refused { refusals }) => Err(refusals),
         Err(BackendError(error)) => Err(vec![Refusal::new(
-            format!("BootShift's helper service didn't answer: {error}."),
+            format!("Kitten's helper service didn't answer: {error}."),
             "Make sure bootshiftd is installed and running, then try again.",
         )]),
     }

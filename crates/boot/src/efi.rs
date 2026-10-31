@@ -1,7 +1,7 @@
 //! The firmware's boot order, through `efibootmgr`.
 //!
 //! A one-time `BootNext` is consumed on the first boot, so after a power cut the firmware would
-//! go back to its normal order. Instead BootShift sets a persistent order with the running
+//! go back to its normal order. Instead Kitten sets a persistent order with the running
 //! distro's entry first and Windows Boot Manager taken out, and restores the original at the
 //! end. The Windows entry itself is kept.
 
@@ -40,7 +40,7 @@ pub fn set_order(runner: &dyn Runner, order: &[u16]) -> Result<(), RunError> {
     runner.run_ok(&command).map(|_| ())
 }
 
-/// The order to use while BootShift works: the running system's entry first, everything else
+/// The order to use while Kitten works: the running system's entry first, everything else
 /// after it, except Windows Boot Manager.
 pub fn recovery_order(entries: &BootEntries) -> Result<Vec<u16>, String> {
     let current = entries

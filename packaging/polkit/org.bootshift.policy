@@ -3,10 +3,10 @@
   "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 <!-- Installed to /usr/share/polkit-1/actions/. -->
 <policyconfig>
-  <vendor>BootShift</vendor>
+  <vendor>Kitten</vendor>
 
   <action id="org.bootshift.inspect">
-    <description>Read the disk layout and run BootShift's safety checks</description>
+    <description>Read the disk layout and run Kitten's safety checks</description>
     <message>Authentication is required to read the disk layout</message>
     <defaults>
       <allow_any>auth_admin</allow_any>

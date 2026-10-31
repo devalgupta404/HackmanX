@@ -114,7 +114,7 @@ impl App {
             }
         }
 
-        ui.heading("BootShift Migrate");
+        ui.heading("Kitten Migrate");
         ui.add_space(8.0);
 
         let (text, color) = forecast_line(&self.advice, self.dirty_bytes);

@@ -4,7 +4,7 @@ use crate::layout::{Content, Extent, Geometry, Layout, Partition, Target};
 use crate::refusal::Refusal;
 use crate::units::Sectors;
 
-/// Checks that BootShift can safely turn `current` into `target`. A partition the target leaves
+/// Checks that Kitten can safely turn `current` into `target`. A partition the target leaves
 /// out is being deleted: that is allowed for everything but the ESP and BitLocker volumes.
 pub fn validate(current: &Layout, target: &Target) -> Result<(), Refusal> {
     check_partition_set(current, target)?;
@@ -43,7 +43,7 @@ fn check_partition_set(current: &Layout, target: &Target) -> Result<(), Refusal>
             Content::BitLocker => {
                 return refuse(
                     format!(
-                        "{} is a BitLocker volume, which BootShift never touches.",
+                        "{} is a BitLocker volume, which Kitten never touches.",
                         partition.label()
                     ),
                     "Remove it from inside Windows instead.",
@@ -78,7 +78,7 @@ fn check_partition(geometry: &Geometry, partition: &Partition, new: Extent) -> R
         Content::EfiSystem => {
             return refuse(
                 format!(
-                    "{label} is the EFI system partition, which holds BootShift's recovery system during the change."
+                    "{label} is the EFI system partition, which holds Kitten's recovery system during the change."
                 ),
                 "Leave the EFI system partition where it is, at its current size.",
             );
@@ -106,7 +106,7 @@ fn check_partition(geometry: &Geometry, partition: &Partition, new: Extent) -> R
     if grows && !content.can_grow() {
         return refuse(
             format!(
-                "BootShift can move {label} but can't grow the {} data inside it.",
+                "Kitten can move {label} but can't grow the {} data inside it.",
                 content.name()
             ),
             "Keep its current size.",
@@ -132,14 +132,14 @@ fn check_shrink(
         ),
         content if !content.can_shrink() => refuse(
             format!(
-                "BootShift can move {label} but can't shrink the {} data inside it.",
+                "Kitten can move {label} but can't shrink the {} data inside it.",
                 content.name()
             ),
             "Keep its current size or make it larger.",
         ),
         _ => match partition.min_len {
             None => refuse(
-                format!("BootShift couldn't measure how small {label} can be made."),
+                format!("Kitten couldn't measure how small {label} can be made."),
                 "Check the filesystem for errors, then try again.",
             ),
             Some(min_len) if new_len < min_len => {

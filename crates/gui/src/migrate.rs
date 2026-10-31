@@ -1,6 +1,6 @@
 //! The "Migrate to new hardware" goal: replicate this machine onto another, cut over with almost no
 //! downtime, and finish with a signed receipt. Built from `bootshift-migrate-core`'s own types and
-//! drawn with BootShift's theme, so it is one app, not a bolt-on. The demo backend converges a
+//! drawn with Kitten's theme, so it is one app, not a bolt-on. The demo backend converges a
 //! migration and then commits; the real run wires into the same view.
 
 use std::path::PathBuf;
@@ -426,7 +426,7 @@ fn forecast(view: &MigrateView) -> (String, String, Color32) {
     }
 }
 
-/// Churn per pass: a shrinking row of bars, labelled, in BootShift's bar palette.
+/// Churn per pass: a shrinking row of bars, labelled, in Kitten's bar palette.
 fn churn(ui: &mut egui::Ui, view: &MigrateView) {
     let caption = widgets::galley(
         ui,

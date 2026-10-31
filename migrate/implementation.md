@@ -1,4 +1,4 @@
-# BootShift Migrate — Implementation
+# Kitten Migrate — Implementation
 
 Crates, types, algorithms, formats and tests. This document refers to `architecture.md` sections as A*n* and to `plan.md` tasks by number. All repository rules in `CLAUDE.md` apply:
 - typed errors in libraries;
@@ -390,7 +390,7 @@ bootshift-migrate verify            → A10 background source verify; updates th
 bootshift-migrate verify-receipt <file> [--source DEV --target DEV]
 ```
 
-Every refusal prints a reason and a fix, as in BootShift: `Refuse { reason: "Swap is in use and only 300 MiB of RAM is free", fix: "Stop memory-hungry services or add RAM before cutover" }`.
+Every refusal prints a reason and a fix, as in Kitten: `Refuse { reason: "Swap is in use and only 300 MiB of RAM is free", fix: "Stop memory-hungry services or add RAM before cutover" }`.
 
 ---
 
@@ -418,7 +418,7 @@ Privileged tests follow the existing guard: `#[ignore]`, `require_test_vm()`, lo
 - The `track-bpf` crate builds with `cargo +nightly build -Z build-std=core --target bpfel-unknown-none` plus `bpf-linker`, wrapped as `cargo xtask build-tracker`. Its output (`tracker.bpf.o`) is embedded into `migrate-track` with `include_bytes!` from `xtask/out/`, so normal builds stay on the pinned stable toolchain.
 - CO-RE: the program reads only tracepoint context fields, so it needs no kernel headers at runtime. BTF is checked at preflight.
 - The release binary is static musl like `bootshift`: `cargo build -p bootshift-migrate-cli --release --target x86_64-unknown-linux-musl`.
-- The receiver image is the BootShift recovery initramfs plus `nvmet`, `nvme_tcp`, `iscsi_target_mod`/`target_core_*`, `dm_snapshot`, `dm_raid` and the migrate binary. It is built by `bootshift-boot::initramfs` with an extra module list, and shipped as an ISO and a raw cloud image (`cargo xtask build-receiver-image`).
+- The receiver image is the Kitten recovery initramfs plus `nvmet`, `nvme_tcp`, `iscsi_target_mod`/`target_core_*`, `dm_snapshot`, `dm_raid` and the migrate binary. It is built by `bootshift-boot::initramfs` with an extra module list, and shipped as an ISO and a raw cloud image (`cargo xtask build-receiver-image`).
 
 ---
 
@@ -426,7 +426,7 @@ Privileged tests follow the existing guard: `#[ignore]`, `require_test_vm()`, lo
 
 - One log line per pass: kind, bytes sent, duration, dirty at end, link rate, advice.
 - One log line per state transition on each side, including the epoch.
-- Progress for the GUI goes through the same `ProgressSink` idea as BootShift's copier, extended with `pass(stats)` and `forecast(advice)`.
+- Progress for the GUI goes through the same `ProgressSink` idea as Kitten's copier, extended with `pass(stats)` and `forecast(advice)`.
 - The receipt is the permanent record. Logs are for debugging only.
 
 ---

@@ -88,7 +88,7 @@ enum Task {
         rehearse: bool,
     },
     /// Hand-driven migration demo: boot two guests (this machine and a blank new one) in windows,
-    /// keep the source live and churning, open a terminal into each, and launch the BootShift GUI
+    /// keep the source live and churning, open a terminal into each, and launch the Kitten GUI
     /// on its migration screen. You check the disks in each terminal, press Start migration in the
     /// GUI, and check again: the new machine ends byte-identical with a signed receipt.
     MigrateDemo {
@@ -219,7 +219,7 @@ fn demo_gui(paths: &Paths, fresh: bool) -> Result<()> {
         .context("starting the D-Bus forward")?;
 
     let gui = paths.repo.join("target/release/bootshift-gui");
-    println!("\n================  BootShift GUI demo is ready  ================\n");
+    println!("\n================  Kitten GUI demo is ready  ================\n");
     println!("The guest's bus is forwarded to {FORWARDED_BUS}. Build the GUI once:\n");
     println!("  cargo build -p bootshift-gui --release\n");
     println!("Then launch the desktop app against the guest's REAL disk:\n");
@@ -274,9 +274,9 @@ fn demo(paths: &Paths, fresh: bool) -> Result<()> {
         let port = guest.ssh_port();
         let key = paths.ssh_key.display();
         guest.leak();
-        println!("\n================  BootShift demo (resuming)  ================\n");
+        println!("\n================  Kitten demo (resuming)  ================\n");
         println!("Reusing the existing disk. If a move was interrupted, watch the VM window:");
-        println!("the BootShift recovery console resumes from the journal and finishes, then");
+        println!("the Kitten recovery console resumes from the journal and finishes, then");
         println!("the machine boots normally.\n");
         println!("Once it reaches the login screen, reconnect and show the result:\n");
         println!(
@@ -329,7 +329,7 @@ fn demo(paths: &Paths, fresh: bool) -> Result<()> {
     let key = paths.ssh_key.display();
     guest.leak();
 
-    println!("\n================  BootShift demo is ready  ================\n");
+    println!("\n================  Kitten demo is ready  ================\n");
     println!("The VM window is open on this screen. Keep it visible: the recovery");
     println!("console appears there during the reboot.\n");
     println!("In a NEW terminal, connect to the demo machine:\n");
@@ -342,7 +342,7 @@ fn demo(paths: &Paths, fresh: bool) -> Result<()> {
     println!("  # 2. See what the change will do (moves the data partition left, then grows it)");
     println!("  sudo env BOOTSHIFT_EXTRA_KERNEL_ARGS='console=tty0 console=ttyS0' \\");
     println!("       bootshift apply {disk_node} /home/ubuntu/move-left.json --yes\n");
-    println!("  # 3. Reboot — watch the BootShift recovery console in the VM window");
+    println!("  # 3. Reboot — watch the Kitten recovery console in the VM window");
     println!("  sudo reboot\n");
     println!("  #    (optional: to show crash-safety, close the VM window mid-move to cut the");
     println!(
@@ -537,7 +537,7 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
     let serial_before = guest.serial_len();
     let _ = guest.ssh("sudo reboot");
 
-    guest.wait_serial(serial_before, "BootShift recovery", 180)?;
+    guest.wait_serial(serial_before, "Kitten recovery", 180)?;
     println!("recovery is running.");
 
     if no_power_cut {
@@ -550,7 +550,7 @@ fn boot_proof(paths: &Paths, no_power_cut: bool) -> Result<()> {
 
         println!("powering back on…");
         guest = Guest::launch(paths, &disk, display_from_env())?;
-        guest.wait_serial(0, "BootShift recovery", 180)?;
+        guest.wait_serial(0, "Kitten recovery", 180)?;
         guest.wait_serial(0, "Done. Restarting into your system.", 600)?;
         println!("recovery resumed after the power cut and finished.");
     }
@@ -778,7 +778,7 @@ fn migrate_rig(
 
 /// Hand-driven migration demo: set the stage, then hand the controls to a person. Boots the two
 /// guests in windows, fills the source and keeps it live and churning, installs the migrate binary,
-/// starts the receiver, opens a terminal into each guest, and launches the BootShift GUI on its
+/// starts the receiver, opens a terminal into each guest, and launches the Kitten GUI on its
 /// migration screen. The GUI's "Start migration" writes a go-file a background runner waits for; the
 /// runner performs the real live migration and drops the receiver's signed receipt where the GUI
 /// picks it up. Nothing touches a real disk: both machines are QEMU guests on virtio data disks.
@@ -941,15 +941,13 @@ fn migrate_demo(paths: &Paths, data_mib: u64) -> Result<()> {
     target.leak();
 
     println!("\n================  Migration demo is ready  ================\n");
-    println!(
-        "Two machines are up in their own windows, plus a terminal into each and the BootShift"
-    );
+    println!("Two machines are up in their own windows, plus a terminal into each and the Kitten");
     println!("window on its migration screen. The source is live and changing the whole time.\n");
     println!("1) BEFORE — in the SOURCE terminal, show what is being migrated:");
     println!("     sudo cat /mnt/d/MANIFEST");
     println!("   and in the TARGET terminal, show the new disk is blank:");
     println!("     sudo sha256sum {tgt_dev}\n");
-    println!("2) In the BootShift window, press \"Start migration\" and watch it commit.\n");
+    println!("2) In the Kitten window, press \"Start migration\" and watch it commit.\n");
     println!("3) AFTER — in the TARGET terminal, prove the new machine is identical:");
     println!(
         "     sudo /usr/local/sbin/bootshift-migrate verify-receipt /tmp/receipt.json --target {tgt_dev}"

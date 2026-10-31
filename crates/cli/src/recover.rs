@@ -28,8 +28,8 @@ const ERROR_SCREEN_WAIT: Duration = Duration::from_secs(300);
 /// off after showing the problem if it can't finish. It never boots an operating system over
 /// a half-finished disk.
 pub fn run_as_init() -> ! {
-    say("BootShift recovery: rearranging your disk.");
-    say("If the power goes out, just turn the computer back on. BootShift will continue.");
+    say("Kitten recovery: rearranging your disk.");
+    say("If the power goes out, just turn the computer back on. Kitten will continue.");
 
     let outcome = prepare_system().and_then(|args| {
         let disk = wait_for_disk(args.disk_guid)?;
@@ -56,7 +56,7 @@ pub fn run_as_init() -> ! {
                 .downcast_ref::<RecoveryError>()
                 .is_some_and(RecoveryError::left_disk_untouched) =>
         {
-            say(&format!("BootShift stopped: {error:#}"));
+            say(&format!("Kitten stopped: {error:#}"));
             say("Nothing on the disk was changed. Press Enter to restart into your system;");
             say("it restarts by itself in five minutes.");
             wait_for_enter_or(ERROR_SCREEN_WAIT);
@@ -65,7 +65,7 @@ pub fn run_as_init() -> ! {
         }
         Err(error) => {
             let message = format!("{error:#}");
-            say(&format!("BootShift stopped: {message}"));
+            say(&format!("Kitten stopped: {message}"));
             say("Your data is safe: the journal records exactly where the work stopped.");
             say("Do not start Windows or another system on this disk yet.");
             if message.contains("can't be read") {
@@ -174,7 +174,7 @@ fn screen(done: u64, total: u64) -> String {
     let rule = format!("\x1b[90m{}\x1b[0m", "─".repeat(RULE_WIDTH));
     let rows = [
         String::new(),
-        "\x1b[1;97mBootShift recovery\x1b[0m".to_string(),
+        "\x1b[1;97mKitten recovery\x1b[0m".to_string(),
         "\x1b[90mmoving your partitions, before any operating system starts\x1b[0m".to_string(),
         String::new(),
         rule.clone(),
@@ -186,7 +186,7 @@ fn screen(done: u64, total: u64) -> String {
         rule,
         String::new(),
         "\x1b[92mPower cut? Rude, but fine. Turn the computer back on.\x1b[0m".to_string(),
-        "\x1b[92mBootShift resumes from the last verified chunk. No drama.\x1b[0m".to_string(),
+        "\x1b[92mKitten resumes from the last verified chunk. No drama.\x1b[0m".to_string(),
         "\x1b[93mDo not boot Windows from the firmware menu. A half-moved disk\x1b[0m".to_string(),
         "\x1b[93mis not something it handles gracefully.\x1b[0m".to_string(),
     ];

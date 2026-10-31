@@ -1,4 +1,4 @@
-//! The checks that must all pass before BootShift changes a single byte. Anything that can't
+//! The checks that must all pass before Kitten changes a single byte. Anything that can't
 //! be determined counts as a refusal.
 
 use bootshift_core::layout::{Content, Layout};
@@ -53,7 +53,7 @@ pub fn evaluate(facts: &Facts, layout: &Layout) -> Vec<Refusal> {
     if !facts.uefi {
         refuse(
             "This computer starts in legacy BIOS mode.",
-            "BootShift needs UEFI. Switch the firmware to UEFI mode, which usually means reinstalling the operating systems.",
+            "Kitten needs UEFI. Switch the firmware to UEFI mode, which usually means reinstalling the operating systems.",
         );
     }
     if facts.partition_table.as_deref() != Some("gpt") {
@@ -76,7 +76,7 @@ pub fn evaluate(facts: &Facts, layout: &Layout) -> Vec<Refusal> {
             "Back up your data and replace the disk. Don't rearrange partitions on a failing disk.",
         ),
         Health::Unknown(why) => refuse(
-            &format!("BootShift couldn't read the disk's health ({why})."),
+            &format!("Kitten couldn't read the disk's health ({why})."),
             "Install smartmontools, then try again.",
         ),
     }
@@ -90,24 +90,24 @@ pub fn evaluate(facts: &Facts, layout: &Layout) -> Vec<Refusal> {
         (Some(free), Some(needed)) if free >= needed => {}
         (Some(free), Some(needed)) => refuse(
             &format!(
-                "The EFI system partition has {} MiB free, and BootShift needs {} MiB for its recovery system.",
+                "The EFI system partition has {} MiB free, and Kitten needs {} MiB for its recovery system.",
                 free >> 20,
                 needed.div_ceil(1 << 20)
             ),
             "Remove old kernels or vendor files from the EFI system partition.",
         ),
         (None, _) => refuse(
-            "BootShift couldn't find how much space is free on the EFI system partition.",
+            "Kitten couldn't find how much space is free on the EFI system partition.",
             "Make sure the EFI system partition is mounted (usually at /boot/efi).",
         ),
         (_, None) => refuse(
-            "BootShift couldn't find the running kernel's image in /boot.",
+            "Kitten couldn't find the running kernel's image in /boot.",
             "Make sure /boot is mounted, restart if the kernel was just updated, then try again.",
         ),
     }
     if let Bootloader::Unsupported(why) = &facts.bootloader {
         refuse(
-            &format!("BootShift can't start its recovery system with this bootloader: {why}."),
+            &format!("Kitten can't start its recovery system with this bootloader: {why}."),
             "Use GRUB, or systemd-boot with Secure Boot off.",
         );
     }
@@ -151,7 +151,7 @@ pub fn unavailable_operations(layout: &Layout, plan: &Plan) -> Vec<Refusal> {
         if needs_guard {
             refusals.push(Refusal::new(
                 format!(
-                    "This version of BootShift can't yet {action} {} safely.",
+                    "This version of Kitten can't yet {action} {} safely.",
                     partition.label()
                 ),
                 format!("Keep {} at its current size for now.", partition.label()),
@@ -169,7 +169,7 @@ fn check_power(power: &Power, refuse: &mut impl FnMut(&str, &str)) {
         Some(true) => {}
         Some(false) => refuse("The laptop is running on battery.", "Plug in the charger."),
         None => refuse(
-            "BootShift couldn't tell whether the charger is connected.",
+            "Kitten couldn't tell whether the charger is connected.",
             "Plug in the charger and make sure it is detected.",
         ),
     }

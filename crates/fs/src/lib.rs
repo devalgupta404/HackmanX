@@ -1,4 +1,4 @@
-//! Filesystem adapters for BootShift. Every external tool runs through one command runner.
+//! Filesystem adapters for Kitten. Every external tool runs through one command runner.
 
 pub mod btrfs;
 pub mod ext4;

@@ -9,7 +9,7 @@ it. Remove an issue in the same change that fixes it.
 - **I-03 Guarded runs have no kernel transport.** The undo-log core (`disk::guard`,
   `disk::UndoLog`, `disk::roll_back`) is crash-tested, but nothing connects `resize2fs` or
   `ntfsresize` to it, so at runtime ext4/NTFS shrink and NTFS grow refuse with "this needs a
-  guarded run, which this build doesn't have yet". Until it lands, BootShift can move anything
+  guarded run, which this build doesn't have yet". Until it lands, Kitten can move anything
   and grow ext4/Btrfs/XFS, but can't take space *from* an NTFS or ext4 partition. Tasks 0.6, 7.3.
 - **I-06 Windows survival is unproven.** Nobody has verified that Windows 11 boots after its
   partition moves, or that WinRE survives a recovery-partition move. This is the project's

@@ -1,6 +1,6 @@
-# BootShift UI specification
+# Kitten UI specification
 
-This describes the BootShift interface exactly enough to rebuild it in Rust without reading the
+This describes the Kitten interface exactly enough to rebuild it in Rust without reading the
 TypeScript. The reference implementation lives in `gui/` (plain TypeScript + Vite, no
 framework); every value below is taken from it, so where this document and the code disagree,
 the code is the one that was screenshotted and approved.
@@ -28,7 +28,7 @@ for where the GUI sits in the plan.
 
 ## 2. What you are building
 
-BootShift rearranges disk partitions by dragging them in a window. The change is applied during
+Kitten rearranges disk partitions by dragging them in a window. The change is applied during
 one restart by a recovery system, and a power cut at any moment resumes instead of destroying
 data.
 
@@ -189,7 +189,7 @@ toolkit, compute the child height and only centre when it fits.)
 
 ```
 +-----------------------+
-|  (o) BootShift        |   brand
+|  (o) Kitten        |   brand
 +-----------------------+
 |  (1) Arrange          |   current: amber circle, deck-high row
 |   |                   |
@@ -368,7 +368,7 @@ promise). Then heading "What protects you" with three sentences:
 ### 9.3 Checks
 
 Title: **"Safety checks"**
-Lede: "All of them pass, or BootShift writes nothing at all."
+Lede: "All of them pass, or Kitten writes nothing at all."
 
 Content: the checks list in one panel, then the gate row.
 
@@ -420,7 +420,7 @@ apply." When something fails: "Apply stays locked until every check passes."
 **Readout.** Heading "Checks": Passed (`12 of 12`, green when all passed), Verdict ("running",
 "safe to start" or "refused"). Then "What applying does":
 
-> BootShift copies its recovery system onto the EFI partition and points the next boot at it.
+> Kitten copies its recovery system onto the EFI partition and points the next boot at it.
 > Your disk is not touched yet.
 >
 > The work happens during the restart you choose, before any operating system starts.
@@ -428,7 +428,7 @@ apply." When something fails: "Apply stays locked until every check passes."
 ### 9.4 Restart
 
 Title: **"During the restart"**
-Lede: "This is what the computer shows while BootShift works, before any operating system
+Lede: "This is what the computer shows while Kitten works, before any operating system
 starts."
 
 Content: the recovery console (section 14), left-aligned with the title, capped at 58rem
@@ -436,7 +436,7 @@ Content: the recovery console (section 14), left-aligned with the title, capped 
 
 **Readout.** Heading "If the power goes out":
 
-> Turn the computer back on. BootShift reads its journal, finds the last chunk the drive
+> Turn the computer back on. Kitten reads its journal, finds the last chunk the drive
 > confirmed, and carries on from there.
 >
 > A half-written chunk is simply redone: a chunk is never larger than the distance it moves, so
@@ -691,7 +691,7 @@ A faithful drawing of the screen the machine shows during the restart. It is del
 Layout while running:
 
 ```
-BootShift recovery                                        <- bright
+Kitten recovery                                        <- bright
 moving your partitions, before any operating system starts <- dim
 ------------------------------------------------------------
 ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  11%                  <- green/dim, 36 cells, % bright
@@ -699,7 +699,7 @@ moving your partitions, before any operating system starts <- dim
 chunk 165 of 1448 copied, flushed, verified, journaled     <- dim
 ------------------------------------------------------------
 Power cut? Rude, but fine. Turn the computer back on.      <- green
-BootShift resumes from the last verified chunk. No drama.  <- green
+Kitten resumes from the last verified chunk. No drama.  <- green
 Do not boot Windows from the firmware menu. A half-moved disk  <- amber
 is not something it handles gracefully.                    <- amber
 ```
@@ -716,7 +716,7 @@ finishes in roughly 25 seconds regardless of size.
 **The power cut** is the demo's whole argument, so get the timing right:
 
 1. The screen goes completely black for **900ms**.
-2. `power restored. firmware hands over to BootShift recovery.` (dim), wait 650ms.
+2. `power restored. firmware hands over to Kitten recovery.` (dim), wait 650ms.
 3. `journal: plan found. last verified chunk N of M.` (dim), wait 650ms.
 4. `that was rude. resuming from chunk N.` (green), wait 1100ms.
 5. The full console reappears at chunk N and the run continues.

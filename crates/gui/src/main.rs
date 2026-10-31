@@ -1,4 +1,4 @@
-//! The BootShift desktop app. It never touches a disk: it asks `bootshiftd` over the system
+//! The Kitten desktop app. It never touches a disk: it asks `bootshiftd` over the system
 //! D-Bus, and falls back to a made-up demo disk when the helper isn't there (or with `--demo`),
 //! saying so in the rail on every screen.
 
@@ -42,14 +42,14 @@ fn main() -> anyhow::Result<()> {
     };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("BootShift")
-            .with_app_id("org.bootshift.BootShift")
+            .with_title("Kitten")
+            .with_app_id("org.bootshift.Kitten")
             .with_inner_size(size)
             .with_min_inner_size([720.0, 560.0]),
         ..eframe::NativeOptions::default()
     };
     eframe::run_native(
-        "BootShift",
+        "Kitten",
         options,
         Box::new(|context| {
             let wake = context.egui_ctx.clone();
@@ -58,7 +58,7 @@ fn main() -> anyhow::Result<()> {
         }),
     )
     .map_err(|error| anyhow::anyhow!("{error}"))
-    .context("opening the BootShift window")
+    .context("opening the Kitten window")
 }
 
 fn choose_backend(demo: bool) -> Box<dyn Backend> {

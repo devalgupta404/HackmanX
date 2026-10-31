@@ -58,7 +58,7 @@ pub struct Inspected {
 pub enum ServiceError {
     #[error("{0} is not a disk the system knows about")]
     UnknownDisk(PathBuf),
-    #[error("can't open {path}; BootShift needs to run as root")]
+    #[error("can't open {path}; Kitten needs to run as root")]
     Open {
         path: PathBuf,
         #[source]
@@ -194,8 +194,8 @@ fn refuse_unworkable_plan(disk: &Path, layout: &Layout, plan: &Plan) -> Result<(
     })?;
     executor::check_table_writes(&device, layout, plan).map_err(|error| {
         refused(
-            &format!("BootShift can't carry out this change on this disk: {error}."),
-            "Nothing was changed. Please report this as a BootShift bug.",
+            &format!("Kitten can't carry out this change on this disk: {error}."),
+            "Nothing was changed. Please report this as a Kitten bug.",
         )
     })
 }

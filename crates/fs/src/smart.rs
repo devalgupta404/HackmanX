@@ -10,7 +10,7 @@ use crate::run::{CommandLine, Runner};
 pub enum Health {
     Passed,
     Failing,
-    /// The drive's health couldn't be read, so BootShift must treat it as unsafe.
+    /// The drive's health couldn't be read, so Kitten must treat it as unsafe.
     Unknown(String),
 }
 

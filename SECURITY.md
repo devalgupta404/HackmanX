@@ -1,12 +1,12 @@
 # Security Policy
 
-BootShift runs with root privileges and writes directly to disks and the partition table. A flaw can corrupt or destroy data, or be used to tamper with a system at boot. We take reports seriously.
+Kitten runs with root privileges and writes directly to disks and the partition table. A flaw can corrupt or destroy data, or be used to tamper with a system at boot. We take reports seriously.
 
 ## Supported versions
 
-BootShift is under active development and has not yet been declared stable. Security and data-safety fixes land on `main`. Until a tagged release exists, only `main` is supported.
+Kitten is under active development and has not yet been declared stable. Security and data-safety fixes land on `main`. Until a tagged release exists, only `main` is supported.
 
-> **Note:** BootShift is not yet tested on real hardware. Do not run it on a disk you care about.
+> **Note:** Kitten is not yet tested on real hardware. Do not run it on a disk you care about.
 
 ## Reporting a vulnerability
 

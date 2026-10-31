@@ -15,7 +15,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Show the disk's partitions as BootShift sees them.
+    /// Show the disk's partitions as Kitten sees them.
     Probe {
         disk: PathBuf,
         /// Print the current layout as a target file to edit, instead of a table.

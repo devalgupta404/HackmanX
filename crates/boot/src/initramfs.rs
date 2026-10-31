@@ -1,6 +1,6 @@
-//! Building the recovery system's initramfs from the running system: BootShift's static binary
+//! Building the recovery system's initramfs from the running system: Kitten's static binary
 //! as `/init`, the filesystem tools with their shared libraries, and the kernel modules the
-//! recovery system loads. Everything comes from the user's own distro, so nothing BootShift
+//! recovery system loads. Everything comes from the user's own distro, so nothing Kitten
 //! ships needs signing and the modules always match the kernel.
 
 use std::collections::BTreeSet;
@@ -127,7 +127,7 @@ pub fn build_archive(runner: &dyn Runner, inputs: &Inputs<'_>) -> Result<Vec<u8>
     Ok(archive.writer.finish())
 }
 
-/// Compresses an archive with zstd, which the distro kernels BootShift supports unpack.
+/// Compresses an archive with zstd, which the distro kernels Kitten supports unpack.
 pub fn compress(runner: &dyn Runner, archive: &Path, output: &Path) -> Result<(), RunError> {
     let command = CommandLine::new("zstd")
         .arg("-q")

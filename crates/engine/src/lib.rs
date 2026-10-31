@@ -1,4 +1,4 @@
-//! The BootShift engine: preflight checks, the chunked copier, the eight-step executor
+//! The Kitten engine: preflight checks, the chunked copier, the eight-step executor
 //! and final verification.
 
 pub mod copier;

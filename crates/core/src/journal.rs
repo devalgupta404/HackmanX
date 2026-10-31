@@ -98,7 +98,7 @@ pub struct ScopeRecord {
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {
-    #[error("not a BootShift journal record")]
+    #[error("not a Kitten journal record")]
     BadMagic,
     #[error("journal format version {0} is not supported")]
     UnsupportedVersion(u32),

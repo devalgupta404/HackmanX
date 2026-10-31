@@ -1,6 +1,6 @@
 //! Finding disks and partitions with `lsblk`.
 //!
-//! util-linux grew the columns and JSON shape BootShift prefers over time. Before 2.37, lsblk
+//! util-linux grew the columns and JSON shape Kitten prefers over time. Before 2.37, lsblk
 //! has no PARTN, START or MOUNTPOINTS columns, prints partitions as a flat list instead of
 //! nesting them under their disk, and (before 2.34) quotes numbers and booleans as strings.
 //! `disks` first asks with the modern columns and falls back to the old set, deriving the
@@ -67,7 +67,7 @@ impl PartitionInfo {
     }
 }
 
-/// What BootShift may do with a partition, from its filesystem and partition type.
+/// What Kitten may do with a partition, from its filesystem and partition type.
 ///
 /// A hibernated swap partition (`swsuspend`) is treated as opaque, so it is only ever moved
 /// byte for byte and its hibernation image survives.

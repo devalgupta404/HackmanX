@@ -1,4 +1,4 @@
-//! Pure logic for BootShift Migrate: the shared units, the dirty-range set, the convergence
+//! Pure logic for Kitten Migrate: the shared units, the dirty-range set, the convergence
 //! model and the fail-closed cutover state machines. No I/O and no `unsafe`, so every rule here
 //! is exhaustively testable without a disk, a kernel or a network. The crates that do I/O
 //! (`migrate-send`, `migrate-receive`, `migrate-track`, `migrate-net`) build on these types.

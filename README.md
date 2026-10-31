@@ -1,12 +1,14 @@
-# BootShift
+<p align="center"><img src="assets/logo.png" alt="Kitten" width="180"></p>
 
-Rearrange the partitions on your disk by dragging them in a window. BootShift applies the change during one restart, with no USB stick, and a power cut at any point can't destroy your data.
+# Kitten
+
+Rearrange the partitions on your disk by dragging them in a window. Kitten applies the change during one restart, with no USB stick, and a power cut at any point can't destroy your data.
 
 **Status:** under active development and not yet tested on real hardware. Do not use it on a disk you care about.
 
 ## How it works
 
-1. You drag partitions into the layout you want. BootShift shows every step and roughly how much it will copy.
+1. You drag partitions into the layout you want. Kitten shows every step and roughly how much it will copy.
 2. It runs its safety checks, and refuses anything it can't do safely, saying how to fix it.
 3. It writes a journal and a small recovery system to the EFI system partition, then asks you to restart.
 4. The recovery system moves the data, chunk by chunk, before any operating system starts. It records every step in the journal, so if the power goes out, turning the computer back on carries on from where it stopped.
@@ -34,14 +36,14 @@ Rearrange the partitions on your disk by dragging them in a window. BootShift ap
 
 ## If something goes wrong
 
-- **The power went out:** turn the computer back on. BootShift continues by itself.
+- **The power went out:** turn the computer back on. Kitten continues by itself.
 - **The recovery screen shows an error:** it powers off without starting any operating system, so nothing half-finished is ever used. Your data is where the journal says.
-- **You want to finish from a live USB:** boot any Linux live USB with BootShift on it and run:
+- **You want to finish from a live USB:** boot any Linux live USB with Kitten on it and run:
 
   ```
   sudo bootshift resume /dev/<disk> "$(cat /path/to/esp/EFI/bootshift/recovery-args.txt)"
   ```
-- **Your old partition table:** BootShift saves it to `EFI/bootshift/table-backup.sfdisk` before starting. `sfdisk /dev/<disk> < table-backup.sfdisk` restores it.
+- **Your old partition table:** Kitten saves it to `EFI/bootshift/table-backup.sfdisk` before starting. `sfdisk /dev/<disk> < table-backup.sfdisk` restores it.
 
 ## Command line
 
@@ -81,7 +83,7 @@ cargo run -p bootshift-gui -- --demo                       # the desktop app, on
 
 ## Contributing
 
-Because BootShift writes to disks, the bar for changes is high. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md): it covers the one rule (never lose or corrupt data), the safety invariants, how to set up and test, and the code and PR conventions. Also see:
+Because Kitten writes to disks, the bar for changes is high. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md): it covers the one rule (never lose or corrupt data), the safety invariants, how to set up and test, and the code and PR conventions. Also see:
 
 - [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md): how we expect everyone to behave.
 - [`SECURITY.md`](SECURITY.md): how to report a security or data-loss vulnerability (privately, please).
@@ -90,4 +92,4 @@ Because BootShift writes to disks, the bar for changes is high. Start with [`CON
 
 ## License
 
-BootShift is licensed under the GNU General Public License, version 3 or later. See [`LICENSE`](LICENSE).
+Kitten is licensed under the GNU General Public License, version 3 or later. See [`LICENSE`](LICENSE).

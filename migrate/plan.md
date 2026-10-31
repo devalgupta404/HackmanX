@@ -1,8 +1,8 @@
-# BootShift Migrate — Plan
+# Kitten Migrate — Plan
 
 Move a running machine (usually a VM) to a new, often larger machine while it keeps taking writes, with seconds of data downtime, without losing a byte, and with proof that nothing was lost.
 
-This folder holds the design for a separate service built on BootShift's engine. Read the three files in this order:
+This folder holds the design for a separate service built on Kitten's engine. Read the three files in this order:
 
 1. `plan.md` (this file): the problem, the research, what we sell, the safety rules and the ordered work plan.
 2. `architecture.md`: the parts, how data flows, the state machines and what happens when anything fails.
@@ -114,25 +114,25 @@ The common shape is: **copy everything once, keep sending changes, optionally te
 
 **Headline (the three verified differentiators, §1.3):** *Migrate any Linux machine onto any new disk — automatically reshaped and grown to fit — with a signed receipt proving it is byte-for-byte identical, and the source never written, so rollback is one power button.*
 
-The three starred USPs below (**U1 proof**, **U4 reshape**, **U6 untouched source**) are the headline: no incumbent has any of them, and all three reuse BootShift's copier, journal, planner and grow adapters almost directly. Everything else — Track mode, Mirror mode, rehearsal — makes the migration **faster, not more differentiated**, so it is built *on top* of the verified base, in the §5 order, each step "only faster, never less safe". **Downtime is a measured spec, not the headline:** sub-second in LVM mirror mode, seconds with the tracker, minutes under heavy churn with no tracker — always finishing safely, because the cutover is verified-first (MD4) and fails closed (§A7).
+The three starred USPs below (**U1 proof**, **U4 reshape**, **U6 untouched source**) are the headline: no incumbent has any of them, and all three reuse Kitten's copier, journal, planner and grow adapters almost directly. Everything else — Track mode, Mirror mode, rehearsal — makes the migration **faster, not more differentiated**, so it is built *on top* of the verified base, in the §5 order, each step "only faster, never less safe". **Downtime is a measured spec, not the headline:** sub-second in LVM mirror mode, seconds with the tracker, minutes under heavy churn with no tracker — always finishing safely, because the cutover is verified-first (MD4) and fails closed (§A7).
 
 | # | USP | Who lacks it | How we deliver it |
 |---|---|---|---|
 | **U1 ★** | **Proof of copy.** A signed receipt with the blake3 Merkle root of the source at freeze, which must equal the root of the target, re-verifiable by anyone with both disks. After go-live, a background re-read of the preserved source checks every byte with no extra downtime | **All.** Azure's per-cycle checksum is internal and kept by no one; elsewhere integrity validation is a manual DIY step (your own hashes, or AWS DMS row checks) | Receiver keeps a durable hash per chunk (§A4 in `architecture.md`); source re-read after cutover |
 | U2 | **Resume, never restart.** A target or link failure resumes from the last chunk the receiver recorded. A source reboot needs only a hash-compare pass that re-reads the disk but sends only the differences | MGN rescans; Azure resets after 90 min; Move reseeds | Journal plus hash index on the receiver; the sender marks every unacknowledged range dirty again |
 | U3 | **Cutover that is guaranteed to converge, with a forecast.** We measure churn and link speed, predict the final delta and downtime, and step up from tracking to a throttle to a synchronous mirror. Cutover is a go/no-go gate on the predicted downtime | Proxmox stalls; MGN backlog; HCX "minutes to hours" | Convergence controller (§A6) |
-| **U4 ★** | **Target reshaped to its new disk, automatically.** Moved partitions, grown filesystems, extended LVM, identity preserved — done during the migration | MGN enlarges the *raw volume* but you grow the filesystem and fix the layout by hand afterward; Nutanix/HCX/Move clone at source size. None reshape the layout | BootShift planner + grow adapters |
+| **U4 ★** | **Target reshaped to its new disk, automatically.** Moved partitions, grown filesystems, extended LVM, identity preserved — done during the migration | MGN enlarges the *raw volume* but you grow the filesystem and fix the layout by hand afterward; Nutanix/HCX/Move clone at source size. None reshape the layout | Kitten planner + grow adapters |
 | U5 | **Any to any, no kernel module, Secure Boot OK.** One static binary; eBPF CO-RE, so no per-kernel build; LVM/dm built in. Works between KVM, VMware, Hyper-V, any cloud and bare metal | MGN (headers, no Secure Boot); Move/HCX (one hypervisor) | In-guest agent; target boots our receiver image |
 | **U6 ★** | **Untouched source, one-step rollback.** The source's data disks are read **read-only**; the source is never written (no agent, no snapshot). Cutover is verified-first and fails closed. Rollback is leaving the source running | Agent tools install software in the guest; **agentless tools snapshot the source datastore each cycle (delta writes + consolidation + stun).** None read-only | Read-only source + verified-first cutover (§A7) |
 | U7 | **Rehearse on real data while replication continues**, including an OS-upgrade dry run, and measure the cutover | Only MGN tests, and only in AWS | Writable dm-snapshot of the replica exported to a throwaway VM |
-| U8 | **Guest changes you can see and undo.** Every change for new hardware is recorded in an undo log and shown as a diff | All vendors make undocumented edits | BootShift `guard` / `undo_log` |
+| U8 | **Guest changes you can see and undo.** Every change for new hardware is recorded in an undo log and shown as a diff | All vendors make undocumented edits | Kitten `guard` / `undo_log` |
 | U9 | **Database-aware.** Detect database engines; run app freeze hooks; recommend logical replication when it fits better | — | Preflight + hooks |
 
 ---
 
 ## 3. Safety rules (migration invariants)
 
-These sit alongside the BootShift invariants in `CLAUDE.md`. Code that breaks one is wrong even if the tests pass.
+These sit alongside the Kitten invariants in `CLAUDE.md`. Code that breaks one is wrong even if the tests pass.
 
 - **M1. The source is read-only.** The migrator never writes the source's data disks. The one exception is LVM mirror mode (§A5.3), which adds a leg to a volume group, and only with explicit consent shown in the summary.
 - **M2. Refuse before starting.** Preflight on both machines passes before the first byte moves. A check that can't decide is a refusal.
@@ -160,7 +160,7 @@ These sit alongside the BootShift invariants in `CLAUDE.md`. Code that breaks on
 - [ ] **MD1. Where the code lives:** `migrate/crates/*` as members of the root workspace (proposed), or a separate repository.
 - [ ] **MD2. Writing eBPF in Rust:** use `aya-ebpf` for the BPF program (proposed). The BPF crate needs `unsafe` and a nightly build via `cargo xtask`, which is an exception to "only `disk` may use unsafe". The alternative is C with libbpf, which needs clang.
 - [ ] **MD3. First sources:** Linux guests (ext4, XFS, Btrfs, LVM). Windows guests (VSS freeze plus a minifilter-free tracker) come later.
-- [x] **MD4. Default cutover: verified-first.** The final compare pass proves the target *before* it boots, so we never serve unverified data — this is the only choice consistent with BootShift's one rule (never lose or corrupt data). In v1 (Compare mode) the final pass *is* the proof, so verified-first costs no extra work. "Fast" (prove in the background after go-live) is an explicit opt-in for low-churn, low-risk jobs. (Reversed from the earlier "fast" proposal: defaulting to detect-after-the-fact can serve corrupted data in the window between cutover and the background verify, which contradicts the one rule.)
+- [x] **MD4. Default cutover: verified-first.** The final compare pass proves the target *before* it boots, so we never serve unverified data — this is the only choice consistent with Kitten's one rule (never lose or corrupt data). In v1 (Compare mode) the final pass *is* the proof, so verified-first costs no extra work. "Fast" (prove in the background after go-live) is an explicit opt-in for low-churn, low-risk jobs. (Reversed from the earlier "fast" proposal: defaulting to detect-after-the-fact can serve corrupted data in the window between cutover and the background verify, which contradicts the one rule.)
 - [ ] **MD5. Default transport:** TLS 1.3 over TCP with a 6-word pairing code (proposed). Alternative: SSH tunnel.
 
 ---
@@ -311,7 +311,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 ### Phase 11 — Proof after go-live
 
 - [x] **11.1 Background source verify.**
-  - Read the frozen or powered-off source (in the BootShift recovery image, or by attaching its volume) and compare with the receipt.
+  - Read the frozen or powered-off source (in the Kitten recovery image, or by attaching its volume) and compare with the receipt.
   - On mismatch, report the exact chunks and offer a rollback.
 
   **Done when** a deliberately corrupted target chunk is detected and named.
@@ -362,7 +362,7 @@ A stage's Phase-0 spikes gate it (e.g. Track needs 0.1–0.3). If a spike can't 
 - Moving CPU and RAM state (live migration of a running kernel). Use a hypervisor for that.
 - Post-copy, "boot first, fetch later" (rule M10).
 - Windows sources (planned: VSS freeze + tracker).
-- Shrinking filesystems on the target. Grow and move only, at first; shrink later through BootShift guarded runs.
+- Shrinking filesystems on the target. Grow and move only, at first; shrink later through Kitten guarded runs.
 - Upgrading the OS automatically. We make it safe to rehearse and to undo; the upgrade itself is the user's tool (`do-release-upgrade`).
 
 ---

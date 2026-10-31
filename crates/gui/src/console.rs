@@ -49,7 +49,7 @@ fn lines(run: &RecoveryRun) -> Vec<Line> {
     let done = run.phase == Phase::Finished;
     let moved = (run.total_bytes as f64 * share).round() as u64;
     let mut lines = vec![
-        Line::Text(Tone::Bright, "BootShift recovery".to_string()),
+        Line::Text(Tone::Bright, "Kitten recovery".to_string()),
         Line::Text(
             Tone::Dim,
             "moving your partitions, before any operating system starts".to_string(),
@@ -96,7 +96,7 @@ fn lines(run: &RecoveryRun) -> Vec<Line> {
             ),
             (
                 Tone::Green,
-                "BootShift resumes from the last verified chunk. No drama.",
+                "Kitten resumes from the last verified chunk. No drama.",
             ),
             (
                 Tone::Amber,

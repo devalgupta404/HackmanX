@@ -17,7 +17,7 @@ pub enum Access {
     /// device is mounted or otherwise in use.
     ReadWrite,
     /// Not exclusive, for the recovery system: nothing is mounted there, and the filesystem
-    /// tools must still be able to open the partitions while BootShift holds the disk.
+    /// tools must still be able to open the partitions while Kitten holds the disk.
     ReadWriteShared,
 }
 

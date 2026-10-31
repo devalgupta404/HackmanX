@@ -85,7 +85,7 @@ fn bootloader(runner: &dyn Runner, esp: Option<&Path>) -> Bootloader {
     match grub::pick_vendor(&vendors, current_label.as_deref()) {
         Some(vendor) => Bootloader::Grub { vendor },
         None => Bootloader::Unsupported(format!(
-            "several GRUB installs were found ({}) and BootShift can't tell which one starts this system",
+            "several GRUB installs were found ({}) and Kitten can't tell which one starts this system",
             vendors.join(", ")
         )),
     }
@@ -172,7 +172,7 @@ pub fn filesystem_problems(
                     "Check it with e2fsck (from a live USB if it is your running system), then try again.",
                 )),
                 Err(error) => problems.push(Refusal::new(
-                    format!("BootShift couldn't read {label}: {error}"),
+                    format!("Kitten couldn't read {label}: {error}"),
                     "Check it with e2fsck, then try again.",
                 )),
             },

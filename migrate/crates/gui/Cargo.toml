@@ -1,6 +1,6 @@
 [package]
 name = "bootshift-migrate-gui"
-description = "The BootShift Migrate dashboard: churn, forecast, cutover and the receipt"
+description = "The Kitten Migrate dashboard: churn, forecast, cutover and the receipt"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
